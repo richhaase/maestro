@@ -16,15 +16,18 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 
 ## Data model & persistence
 - **Agents** (persisted): `{ name, command[], env{K:V}?, note? }`
-  - Stored as JSON/TOML in plugin `/data/agents.{json|toml}`.
+  - Stored as JSON/TOML at `~/.config/maestro/agents.{json|toml}` (resolved under `/host`).
   - Unique names, non-empty command.
 - **Runtime sessions** (in-memory, rebuilt from events): `{ tab_name, pane_id?, workspace_path, agent_name }`
+  - Session identity: `tab_name` + `pane_id` (when available) + `workspace_path` + `agent_name`. Keep all four to avoid killing/focusing the wrong pane when duplicates exist.
 - **Workspaces**: derived set of paths seen in sessions + user inputs; lightweight list, no file.
+- **Concurrency**: `/data` is shared across plugin instances (multi-client). Writes are atomic/overwrite; “last write wins”. Consider simple file locks or retry if write fails.
 
 ## Permissions (requested in `load`)
 - `ReadApplicationState`, `ChangeApplicationState`
-- `RunCommands`, `OpenTerminalsOrPlugins`
+- `RunCommands` (for `open_command_pane`) and/or `OpenTerminalsOrPlugins` (for `open_terminal`) depending on launch method. Request the minimal set you actually use.
 - Optional: `WriteToStdin` (if we later send input), `Reconfigure` (if we bind keys), `ReadCliPipes` (future piping).
+- Handle denial: surface a blocking error with a single retry/re-request path.
 
 ## Events subscribed
 - `TabUpdate`, `PaneUpdate`, `SessionUpdate`
@@ -33,9 +36,9 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 - (Optional) `ModeUpdate` for hints, `ListClients` if needed.
 
 ## Commands used
-- Launch: `open_terminal` (or `open_command_pane`) with cwd, env, title `maestro:<agent>:<basename>`.
-- Focus: `go_to_tab_name` or `focus_*_pane` by stored id.
-- Kill: `close_terminal_pane` / `close_plugin_pane` or tab by name.
+- Launch: Prefer **`open_command_pane`** (pane IDs via `CommandPaneOpened`). Inject env by prefixing argv entries as `KEY=VAL cmd ...` (or a thin wrapper if needed). Use **`open_terminal`** only if you want a plain shell and don’t need env; you may need to infer IDs from `PaneUpdate` deltas. Always set a unique title (eg. `maestro:<agent>:<basename>:<uuid4>`).
+- Focus: Try `go_to_tab_name` with stored tab title; fall back to `focus_*_pane` (using `pane_id`) if the tab was renamed/duplicated.
+- Kill: `close_terminal_pane` / `close_plugin_pane` by `pane_id`; if missing, close tab by name as last resort.
 - Bookkeeping: `hide_self`/`show_self` only if we choose to temporarily hide.
 
 ## UI/UX
@@ -48,12 +51,56 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 - Status line for errors/info; concise key hints.
 
 ## Behavior details
-- **Launch**: Resolve workspace path; pick agent; call `open_terminal` with env and title; record tab name; on open events, stash pane id.
+- **Launch**: Resolve workspace path; pick agent; call `open_command_pane` (or `open_terminal`) with env baked into argv and unique title; record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
 - **Focus**: Prefer `go_to_tab_name` on recorded title; fallback to pane id if present; surface error if missing.
-- **Kill**: Close pane/tab; remove from in-memory sessions.
-- **Resync**: Rebuild session list from Tab/Pane updates each event pass; drop stale entries.
+- **Kill**: Close by `pane_id` when known; otherwise close tab by name as last resort; then drop session from memory.
+- **Resync**: Maintain a “seen panes” map; rebuild sessions from `TabUpdate`/`PaneUpdate` on each pass; drop stale entries. Keep optional repair path via `list_clients` if event sync drifts.
 - **Agent persistence**: save immediately on add/edit/delete to `/data`; reload into memory.
-- **Exit**: `BeforeClose` no-op except best-effort flush if pending writes (writes are immediate by design).
+- **Exit**: `BeforeClose` best-effort; writes are immediate so nothing critical to flush.
+
+## Event/command matrix (how each action works)
+- **Launch**: request permissions in `load`; issue `open_command_pane` (or `open_terminal`) with cwd/env/title; update state on `CommandPaneOpened` (pane_id) and `PaneUpdate`/`TabUpdate` deltas; expect `CommandPaneExited/ReRun` for lifecycle.
+- **Focus**: call `go_to_tab_name` using stored title; if that fails, call `focus_*_pane` with `pane_id`; TabUpdate reflects focus change if needed for UI.
+- **Kill**: call `close_terminal_pane` / `close_plugin_pane` with `pane_id`; if unknown, close tab by name; expect `PaneClosed` and drop from sessions.
+- **Resync**: reconcile on every `TabUpdate`/`PaneUpdate`; optional manual repair via `list_clients` + reply event; rebuild session map from events, not persisted state.
+- **Agent CRUD**: no plugin events; read/write `/data/agents.*`; rehydrate agents list immediately after file write.
+- **BeforeClose**: ignore for persistence (writes immediate); can clear transient state.
+
+## State machine (ASCII)
+```
+                +-------------+
+                |    View     |
+                +------+------+ 
+        n  / a / e / d | enter / x / esc
+                       v
+        +--------------+-------------+
+        | NewSessionWorkspace        |
+        +--------------+-------------+
+             | enter(valid)             | esc
+             v                          |
+        +----+---------------------+    |
+        | NewSessionAgentSelect    |<---+
+        +-----------+--------------+
+            | enter on existing -> Launch -> View
+            | enter on "create"
+            v
+        +---+----------------------+ 
+        | NewSessionAgentCreate    |
+        +-----------+--------------+
+            | enter advance/save -> Launch -> View
+            | esc -> NewSessionAgentSelect
+
+From View:
+- a -> AgentForm (isNew) -> enter advances/save -> View; esc -> View
+- e -> AgentForm (edit)  -> enter advances/save -> View; esc -> View
+- d -> DeleteConfirm -> y delete -> View; n/esc -> View
+- enter on session -> Focus -> View
+- x on session -> Kill -> View
+
+Notes:
+- Errors keep current state and surface status; retries stay local.
+- Resync runs in background off events; does not change UI state.
+```
 
 ## Development setup
 - Rust + `zellij-tile`, target `wasm32-wasi`.
