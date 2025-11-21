@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use zellij_tile::prelude::*;
+use zellij_tile::prelude::PermissionStatus;
 
 mod agents;
 
@@ -13,11 +14,15 @@ const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::OpenTerminalsOrPlugins,
 ];
 
-pub struct Maestro;
+pub struct Maestro {
+    model: Model,
+}
 
 impl Default for Maestro {
     fn default() -> Self {
-        Maestro
+        Maestro {
+            model: Model::default(),
+        }
     }
 }
 
@@ -36,15 +41,39 @@ impl ZellijPlugin for Maestro {
             EventType::CommandPaneReRun,
             EventType::PaneClosed,
             EventType::BeforeClose,
+            EventType::PermissionRequestResult,
         ]);
     }
 
-    fn update(&mut self, _event: Event) -> bool {
-        // TODO: wire state machine and actions.
-        true
+    fn update(&mut self, event: Event) -> bool {
+        match event {
+            Event::PermissionRequestResult(status) => {
+                self.model.handle_permission_result(status);
+                true
+            }
+            _ => true, // TODO: wire state machine and actions.
+        }
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        // If permissions were denied or still pending, show that prominently.
+        if self.model.permissions_denied {
+            let text = format!(
+                "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {}x{}",
+                cols, rows
+            );
+            print!("{}", text);
+            return;
+        }
+        if !self.model.permissions_granted {
+            let text = format!(
+                "Maestro requesting permissions...\nViewport: {}x{}",
+                cols, rows
+            );
+            print!("{}", text);
+            return;
+        }
+
         // Placeholder UI: claim the space to avoid blank pane warnings.
         let text = format!(
             "Maestro plugin initializing...\nViewport: {}x{}\n(To be implemented)",
@@ -68,7 +97,24 @@ pub struct Agent {
 
 #[derive(Debug, Default)]
 pub struct Model {
+    pub permissions_granted: bool,
+    pub permissions_denied: bool,
     // TODO: add in-memory maps for agents, sessions, workspaces.
+}
+
+impl Model {
+    fn handle_permission_result(&mut self, status: PermissionStatus) {
+        match status {
+            PermissionStatus::Granted => {
+                self.permissions_granted = true;
+                self.permissions_denied = false;
+            }
+            PermissionStatus::Denied => {
+                self.permissions_granted = false;
+                self.permissions_denied = true;
+            }
+        }
+    }
 }
 
 register_plugin!(Maestro);
