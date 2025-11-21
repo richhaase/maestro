@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use zellij_tile::prelude::*;
+
+mod agents;
 
 // Permissions we intend to request for the MVP.
 const REQUESTED_PERMISSIONS: &[PermissionType] = &[
@@ -58,7 +61,7 @@ pub struct Agent {
     pub name: String,
     pub command: Vec<String>,
     #[serde(default)]
-    pub env: BTreeMap<String, String>,
+    pub env: Option<BTreeMap<String, String>>,
     #[serde(default)]
     pub note: Option<String>,
 }
