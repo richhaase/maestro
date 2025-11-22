@@ -3,10 +3,10 @@
 This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile`, `wasm32-wasi`) that lives inside Zellij and drives everything through the plugin API. No external mux, no legacy config/state baggage.
 
 ## What it does
-- Show three pillars: **Workspaces** (paths), **Sessions** (per workspace), **Agents** (command presets).
-- Create a new session: pick workspace path (defaults to caller cwd), pick agent (or create inline), spawn a pane/tab in Zellij running that agent.
-- Jump to an existing session (focus tab/pane).
-- Kill a session (close its pane/tab).
+- Show three pillars: **Tabs** (Zellij tabs with agent panes), **Agent Panes** (panes running agents), **Agents** (command presets).
+- Create a new agent pane: pick workspace path (optional, for CWD), pick tab (existing or new), pick agent (or create inline), spawn a pane in Zellij running that agent.
+- Jump to an existing agent pane (focus tab/pane).
+- Kill an agent pane (close its pane).
 - Add/edit/delete agent presets, persisted for reuse.
 
 ## What it does NOT do
@@ -43,27 +43,27 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 
 ## UI/UX
 - Single pane UI using built-in components (Table/NestedList/Text).
-- Sections: Workspaces (with counts), Sessions (for selected workspace), Agents.
+- Sections: Tabs (with agent pane counts), Agent Panes (filtered by selected tab), Agents.
 - Modes:
-  - View: navigate with arrows, Tab to switch section, Enter to focus session, `x` to kill, `n` new session, `a` add agent, `e` edit agent, `d` delete agent.
-  - New Session wizard: prompt workspace path (default caller cwd), then agent select or create inline.
+  - View: navigate with arrows, Tab to switch section, Enter to focus agent pane, `x` to kill, `n` new agent pane, `a` add agent, `e` edit agent, `d` delete agent.
+  - New Agent Pane wizard: prompt workspace path (optional, for CWD), then tab selection, then agent select or create inline.
   - Agent form: name, command (space-split), env (KEY=VAL, comma-separated), note (optional).
 - Status line for errors/info; concise key hints.
 
 ## Behavior details
-- **Launch**: Resolve workspace path; pick agent; call `open_command_pane` (or `open_terminal`) with env baked into argv and unique title; record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
-- **Focus**: Prefer `go_to_tab_name` on recorded title; fallback to pane id if present; surface error if missing.
-- **Kill**: Close by `pane_id` when known; otherwise close tab by name as last resort; then drop session from memory.
-- **Resync**: Maintain a “seen panes” map; rebuild sessions from `TabUpdate`/`PaneUpdate` on each pass; drop stale entries. Keep optional repair path via `list_clients` if event sync drifts.
+- **Launch**: Resolve workspace path (optional, for CWD); pick tab (existing or create new); pick agent; call `open_command_pane` with env baked into argv and unique title; record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
+- **Focus**: Prefer `go_to_tab_name` on recorded tab name; fallback to pane id if present; surface error if missing.
+- **Kill**: Close by `pane_id` when known; then drop agent pane from memory.
+- **Resync**: Maintain a “seen panes” map; rebuild agent panes from `TabUpdate`/`PaneUpdate` on each pass; drop stale entries. Keep optional repair path via `list_clients` if event sync drifts.
 - **Agent persistence**: save immediately on add/edit/delete to `/data`; reload into memory.
 - **Exit**: `BeforeClose` best-effort; writes are immediate so nothing critical to flush.
 
 ## Event/command matrix (how each action works)
-- **Launch**: request permissions in `load`; issue `open_command_pane` (or `open_terminal`) with cwd/env/title; update state on `CommandPaneOpened` (pane_id) and `PaneUpdate`/`TabUpdate` deltas; expect `CommandPaneExited/ReRun` for lifecycle.
-- **Focus**: call `go_to_tab_name` using stored title; if that fails, call `focus_*_pane` with `pane_id`; TabUpdate reflects focus change if needed for UI.
-- **Kill**: call `close_terminal_pane` / `close_plugin_pane` with `pane_id`; if unknown, close tab by name; expect `PaneClosed` and drop from sessions.
-- **Resync**: reconcile on every `TabUpdate`/`PaneUpdate`; optional manual repair via `list_clients` + reply event; rebuild session map from events, not persisted state.
-- **Agent CRUD**: no plugin events; read/write `/data/agents.*`; rehydrate agents list immediately after file write.
+- **Launch**: request permissions in `load`; issue `open_command_pane` with cwd/env/title; update state on `CommandPaneOpened` (pane_id) and `PaneUpdate`/`TabUpdate` deltas; expect `CommandPaneExited/ReRun` for lifecycle.
+- **Focus**: call `go_to_tab_name` using stored tab name; if that fails, call `focus_*_pane` with `pane_id`; TabUpdate reflects focus change if needed for UI.
+- **Kill**: call `close_terminal_pane` / `close_plugin_pane` with `pane_id`; expect `PaneClosed` and drop from agent panes.
+- **Resync**: reconcile on every `TabUpdate`/`PaneUpdate`; optional manual repair via `list_clients` + reply event; rebuild agent pane list from events, not persisted state.
+- **Agent CRUD**: no plugin events; read/write `/data/agents.kdl`; rehydrate agents list immediately after file write.
 - **BeforeClose**: ignore for persistence (writes immediate); can clear transient state.
 
 ## State machine (ASCII)
@@ -74,28 +74,33 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
         n  / a / e / d | enter / x / esc
                        v
         +--------------+-------------+
-        | NewSessionWorkspace        |
+        | NewPaneWorkspace           |
         +--------------+-------------+
-             | enter(valid)             | esc
+             | enter/tab                 | esc
              v                          |
         +----+---------------------+    |
-        | NewSessionAgentSelect    |<---+
+        | NewPaneTabSelect         |<---+
+        +-----------+--------------+
+             | enter                    | esc
+             v                          |
+        +----+---------------------+    |
+        | NewPaneAgentSelect       |<---+
         +-----------+--------------+
             | enter on existing -> Launch -> View
             | enter on "create"
             v
         +---+----------------------+ 
-        | NewSessionAgentCreate    |
+        | NewPaneAgentCreate       |
         +-----------+--------------+
             | enter advance/save -> Launch -> View
-            | esc -> NewSessionAgentSelect
+            | esc -> NewPaneAgentSelect
 
 From View:
 - a -> AgentForm (isNew) -> enter advances/save -> View; esc -> View
 - e -> AgentForm (edit)  -> enter advances/save -> View; esc -> View
 - d -> DeleteConfirm -> y delete -> View; n/esc -> View
-- enter on session -> Focus -> View
-- x on session -> Kill -> View
+- enter on agent pane -> Focus -> View
+- x on agent pane -> Kill -> View
 
 Notes:
 - Errors keep current state and surface status; retries stay local.

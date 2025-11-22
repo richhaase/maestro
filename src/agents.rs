@@ -155,6 +155,7 @@ fn config_base_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use tempfile::TempDir;
 
     fn with_home<F: FnOnce() -> R, R>(dir: &Path, f: F) -> R {

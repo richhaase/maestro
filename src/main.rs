@@ -33,46 +33,40 @@ pub struct Agent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SessionStatus {
+pub enum PaneStatus {
     Running,
     Exited(Option<i32>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Session {
+pub struct AgentPane {
     pub tab_name: String,
     pub pane_id: Option<u32>,
     pub workspace_path: String,
     pub agent_name: String,
-    pub status: SessionStatus,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Workspace {
-    pub path: String,
-    pub name: String,
+    pub status: PaneStatus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    Workspaces,
-    Sessions,
+    Tabs,
+    AgentPanes,
     Agents,
 }
 
 impl Default for Section {
     fn default() -> Self {
-        Section::Workspaces
+        Section::Tabs
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     View,
-    NewSessionWorkspace,
-    NewSessionTabSelect,
-    NewSessionAgentSelect,
-    NewSessionAgentCreate,
+    NewPaneWorkspace,
+    NewPaneTabSelect,
+    NewPaneAgentSelect,
+    NewPaneAgentCreate,
     AgentFormCreate,
     AgentFormEdit,
     DeleteConfirm,
@@ -103,13 +97,12 @@ pub struct Model {
     pub permissions_granted: bool,
     pub permissions_denied: bool,
     pub agents: Vec<Agent>,
-    pub sessions: Vec<Session>,
-    pub workspaces: Vec<Workspace>,
+    pub agent_panes: Vec<AgentPane>,
     pub tab_names: Vec<String>,
     pub status_message: String,
     pub error_message: String,
-    pub selected_workspace: usize,
-    pub selected_session: usize,
+    pub selected_tab: usize,
+    pub selected_pane: usize,
     pub selected_agent: usize,
     pub focused_section: Section,
     pub mode: Mode,
@@ -155,9 +148,8 @@ impl Model {
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
         let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
         self.tab_names = tab_names.clone();
-        self.sessions
-            .retain(|s| s.pane_id.is_some() || tab_names.contains(&s.tab_name));
-        self.rebuild_workspaces();
+        self.agent_panes
+            .retain(|p| p.pane_id.is_some() || tab_names.contains(&p.tab_name));
         self.clamp_selections();
     }
 
@@ -169,16 +161,16 @@ impl Model {
                     continue;
                 }
                 let entry = self
-                    .sessions
+                    .agent_panes
                     .iter_mut()
-                    .find(|s| s.tab_name == title || s.pane_id == Some(pane.id));
+                    .find(|p| p.tab_name == title || p.pane_id == Some(pane.id));
                 if let Some(existing) = entry {
                     existing.pane_id = Some(pane.id);
                     existing.tab_name = title;
                     existing.status = if pane.exited {
-                        SessionStatus::Exited(pane.exit_status)
+                        PaneStatus::Exited(pane.exit_status)
                     } else {
-                        SessionStatus::Running
+                        PaneStatus::Running
                     };
                     if existing.agent_name.is_empty() || existing.workspace_path.is_empty() {
                         if let Some((agent, workspace_hint)) = parse_title_hint(&existing.tab_name) {
@@ -194,21 +186,20 @@ impl Model {
                     let (agent_name, workspace_path) = parse_title_hint(&title)
                         .map(|(a, w)| (a, w))
                         .unwrap_or_default();
-                    self.sessions.push(Session {
+                    self.agent_panes.push(AgentPane {
                         tab_name: title,
                         pane_id: Some(pane.id),
                         workspace_path,
                         agent_name,
                         status: if pane.exited {
-                            SessionStatus::Exited(pane.exit_status)
+                            PaneStatus::Exited(pane.exit_status)
                         } else {
-                            SessionStatus::Running
+                            PaneStatus::Running
                         },
                     });
                 }
             }
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
@@ -220,9 +211,9 @@ impl Model {
         let workspace_path = ctx.get("cwd").cloned().unwrap_or_default();
         let agent_name = ctx.get("agent").cloned().unwrap_or_default();
         let entry = self
-            .sessions
+            .agent_panes
             .iter_mut()
-            .find(|s| s.tab_name == title || s.pane_id == Some(pane_id));
+            .find(|p| p.tab_name == title || p.pane_id == Some(pane_id));
         if let Some(existing) = entry {
             existing.pane_id = Some(pane_id);
             existing.tab_name = title;
@@ -232,26 +223,24 @@ impl Model {
             if !agent_name.is_empty() {
                 existing.agent_name = agent_name.clone();
             }
-            existing.status = SessionStatus::Running;
+            existing.status = PaneStatus::Running;
         } else {
-            self.sessions.push(Session {
+            self.agent_panes.push(AgentPane {
                 tab_name: title,
                 pane_id: Some(pane_id),
                 workspace_path,
                 agent_name,
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             });
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
     fn rebuild_from_session_infos(&mut self, session_infos: &[SessionInfo]) {
-        self.sessions.clear();
+        self.agent_panes.clear();
         for session in session_infos {
             self.rebuild_from_panes_iter(session.panes.clone().panes.into_iter());
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
@@ -268,20 +257,19 @@ impl Model {
                 let (agent_name, workspace_path) = parse_title_hint(&title)
                     .map(|(a, w)| (a, w))
                     .unwrap_or_default();
-                self.sessions.push(Session {
+                self.agent_panes.push(AgentPane {
                     tab_name: title,
                     pane_id: Some(pane.id),
                     workspace_path,
                     agent_name,
                     status: if pane.exited {
-                        SessionStatus::Exited(pane.exit_status)
+                        PaneStatus::Exited(pane.exit_status)
                     } else {
-                        SessionStatus::Running
+                        PaneStatus::Running
                     },
                 });
             }
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
@@ -295,14 +283,13 @@ impl Model {
             .get("pane_title")
             .cloned()
             .unwrap_or_else(|| format!("maestro:{}", pane_id));
-        if let Some(sess) = self
-            .sessions
+        if let Some(pane) = self
+            .agent_panes
             .iter_mut()
-            .find(|s| s.pane_id == Some(pane_id) || s.tab_name == title)
+            .find(|p| p.pane_id == Some(pane_id) || p.tab_name == title)
         {
-            sess.status = SessionStatus::Exited(exit_status);
+            pane.status = PaneStatus::Exited(exit_status);
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
@@ -311,14 +298,13 @@ impl Model {
             .get("pane_title")
             .cloned()
             .unwrap_or_else(|| format!("maestro:{}", pane_id));
-        if let Some(sess) = self
-            .sessions
+        if let Some(pane) = self
+            .agent_panes
             .iter_mut()
-            .find(|s| s.pane_id == Some(pane_id) || s.tab_name == title)
+            .find(|p| p.pane_id == Some(pane_id) || p.tab_name == title)
         {
-            sess.status = SessionStatus::Running;
+            pane.status = PaneStatus::Running;
         }
-        self.rebuild_workspaces();
         self.clamp_selections();
     }
 
@@ -330,29 +316,8 @@ impl Model {
         let pid = match pane_id {
             PaneId::Terminal(id) | PaneId::Plugin(id) => id,
         };
-        self.sessions.retain(|s| s.pane_id != Some(pid));
-        self.rebuild_workspaces();
+        self.agent_panes.retain(|p| p.pane_id != Some(pid));
         self.clamp_selections();
-    }
-
-    fn rebuild_workspaces(&mut self) {
-        let mut seen = BTreeMap::new();
-        for sess in &self.sessions {
-            let path = sess.workspace_path.clone();
-            if path.is_empty() {
-                continue;
-            }
-            let name = path
-                .rsplit('/')
-                .next()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| path.clone());
-            seen.entry(path.clone()).or_insert(name);
-        }
-        self.workspaces = seen
-            .into_iter()
-            .map(|(path, name)| Workspace { path, name })
-            .collect();
     }
 
     fn reset_status(&mut self) {
@@ -369,14 +334,10 @@ impl Model {
         self.mode = Mode::View;
     }
 
-    fn start_new_session_workspace(&mut self) {
-        let default_path = self
-            .workspaces
-            .get(self.selected_workspace)
-            .map(|w| w.path.clone())
-            .unwrap_or_else(String::new);
-        self.workspace_input = default_path;
-        self.mode = Mode::NewSessionWorkspace;
+    fn start_new_pane_workspace(&mut self) {
+        // Default to empty path - user can type or use tab to skip
+        self.workspace_input.clear();
+        self.mode = Mode::NewPaneWorkspace;
         self.wizard_agent_idx = 0;
         self.wizard_tab_idx = 0;
         self.reset_status();
@@ -431,7 +392,7 @@ impl Model {
         self.reset_status();
     }
 
-    pub fn spawn_session(&mut self, workspace_path: String, agent_name: String, tab_choice: TabChoice) {
+    pub fn spawn_agent_pane(&mut self, workspace_path: String, agent_name: String, tab_choice: TabChoice) {
         if !self.permissions_granted {
             self.error_message = "permissions not granted".to_string();
             return;
@@ -475,19 +436,18 @@ impl Model {
         }
         open_command_pane(command_to_run, ctx);
 
-        self.sessions.push(Session {
+        self.agent_panes.push(AgentPane {
             tab_name: title,
             pane_id: None,
             workspace_path,
             agent_name,
-            status: SessionStatus::Running,
+            status: PaneStatus::Running,
         });
-        self.rebuild_workspaces();
         self.error_message.clear();
         if self.status_message.is_empty() {
-            self.status_message = "Session launched".to_string();
+            self.status_message = "Agent pane launched".to_string();
         } else {
-            self.status_message = format!("{}; Session launched", self.status_message);
+            self.status_message = format!("{}; Agent pane launched", self.status_message);
         }
     }
 
@@ -496,19 +456,18 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        let sessions = filtered_sessions(self);
-        if selected_idx >= sessions.len() {
-            self.error_message = "no sessions".to_string();
+        let panes = filtered_panes(self);
+        if selected_idx >= panes.len() {
+            self.error_message = "no agent panes".to_string();
             return;
         }
-        let sess = &sessions[selected_idx];
-        let tab_target = workspace_tab_name(&sess.workspace_path);
-        go_to_tab_name(&tab_target);
-        if let Some(pid) = sess.pane_id {
+        let pane = &panes[selected_idx];
+        go_to_tab_name(&pane.tab_name);
+        if let Some(pid) = pane.pane_id {
             focus_terminal_pane(pid, false);
         }
         self.error_message.clear();
-        self.status_message = "Focused session".to_string();
+        self.status_message = "Focused agent pane".to_string();
     }
 
     pub fn kill_selected(&mut self, selected_idx: usize) {
@@ -516,19 +475,18 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        let sessions = filtered_sessions(self);
-        if selected_idx >= sessions.len() {
-            self.error_message = "no sessions".to_string();
+        let panes = filtered_panes(self);
+        if selected_idx >= panes.len() {
+            self.error_message = "no agent panes".to_string();
             return;
         }
-        let sess = &sessions[selected_idx];
-        if let Some(pid) = sess.pane_id {
+        let pane = &panes[selected_idx];
+        if let Some(pid) = pane.pane_id {
             close_terminal_pane(pid);
-            self.sessions
-                .retain(|s| s.tab_name != sess.tab_name || s.pane_id != sess.pane_id);
-            self.rebuild_workspaces();
+            self.agent_panes
+                .retain(|p| p.tab_name != pane.tab_name || p.pane_id != pane.pane_id);
             self.error_message.clear();
-            self.status_message = "Killed session".to_string();
+            self.status_message = "Killed agent pane".to_string();
             self.clamp_selections();
         } else {
             self.error_message = "no valid target to kill".to_string();
@@ -536,18 +494,18 @@ impl Model {
     }
 
     fn clamp_selections(&mut self) {
-        let workspace_len = self.workspaces.len();
-        if workspace_len == 0 {
-            self.selected_workspace = 0;
-        } else if self.selected_workspace >= workspace_len {
-            self.selected_workspace = workspace_len.saturating_sub(1);
+        let tab_len = self.tab_names.len();
+        if tab_len == 0 {
+            self.selected_tab = 0;
+        } else if self.selected_tab >= tab_len {
+            self.selected_tab = tab_len.saturating_sub(1);
         }
 
-        let session_len = filtered_sessions(self).len();
-        if session_len == 0 {
-            self.selected_session = 0;
-        } else if self.selected_session >= session_len {
-            self.selected_session = session_len.saturating_sub(1);
+        let pane_len = filtered_panes(self).len();
+        if pane_len == 0 {
+            self.selected_pane = 0;
+        } else if self.selected_pane >= pane_len {
+            self.selected_pane = pane_len.saturating_sub(1);
         }
 
         let agent_len = self.agents.len();
@@ -560,8 +518,8 @@ impl Model {
 
     fn move_selection(&mut self, section: Section, delta: isize) {
         let (len, current) = match section {
-            Section::Workspaces => (self.workspaces.len(), self.selected_workspace),
-            Section::Sessions => (filtered_sessions(self).len(), self.selected_session),
+            Section::Tabs => (self.tab_names.len(), self.selected_tab),
+            Section::AgentPanes => (filtered_panes(self).len(), self.selected_pane),
             Section::Agents => (self.agents.len(), self.selected_agent),
         };
         if len == 0 {
@@ -576,11 +534,11 @@ impl Model {
         }
         let next = next as usize;
         match section {
-            Section::Workspaces => self.selected_workspace = next,
-            Section::Sessions => self.selected_session = next,
+            Section::Tabs => self.selected_tab = next,
+            Section::AgentPanes => self.selected_pane = next,
             Section::Agents => self.selected_agent = next,
         }
-        if section == Section::Workspaces {
+        if section == Section::Tabs {
             self.clamp_selections();
         }
         self.status_message.clear();
@@ -589,9 +547,9 @@ impl Model {
 
     fn focus_next_section(&mut self) {
         self.focused_section = match self.focused_section {
-            Section::Workspaces => Section::Sessions,
-            Section::Sessions => Section::Agents,
-            Section::Agents => Section::Workspaces,
+            Section::Tabs => Section::AgentPanes,
+            Section::AgentPanes => Section::Agents,
+            Section::Agents => Section::Tabs,
         };
         self.status_message.clear();
         self.error_message.clear();
@@ -600,9 +558,9 @@ impl Model {
 
     fn focus_prev_section(&mut self) {
         self.focused_section = match self.focused_section {
-            Section::Workspaces => Section::Agents,
-            Section::Sessions => Section::Workspaces,
-            Section::Agents => Section::Sessions,
+            Section::Tabs => Section::Agents,
+            Section::AgentPanes => Section::Tabs,
+            Section::Agents => Section::AgentPanes,
         };
         self.status_message.clear();
         self.error_message.clear();
@@ -612,10 +570,10 @@ impl Model {
     fn handle_key_event(&mut self, key: KeyWithModifier) {
         match self.mode {
             Mode::View => self.handle_key_event_view(key),
-            Mode::NewSessionWorkspace => self.handle_key_event_new_session_workspace(key),
-            Mode::NewSessionTabSelect => self.handle_key_event_new_session_tab_select(key),
-            Mode::NewSessionAgentSelect => self.handle_key_event_new_session_agent_select(key),
-            Mode::NewSessionAgentCreate => self.handle_key_event_agent_form(key, true),
+            Mode::NewPaneWorkspace => self.handle_key_event_new_pane_workspace(key),
+            Mode::NewPaneTabSelect => self.handle_key_event_new_pane_tab_select(key),
+            Mode::NewPaneAgentSelect => self.handle_key_event_new_pane_agent_select(key),
+            Mode::NewPaneAgentCreate => self.handle_key_event_agent_form(key, true),
             Mode::AgentFormCreate | Mode::AgentFormEdit => self.handle_key_event_agent_form(key, false),
             Mode::DeleteConfirm => self.handle_key_event_delete_confirm(key),
         }
@@ -631,8 +589,8 @@ impl Model {
             BareKey::Tab if shift_tab => self.focus_prev_section(),
             BareKey::Tab => self.focus_next_section(),
             BareKey::Enter => {
-                if self.focused_section == Section::Sessions {
-                    let idx = self.selected_session;
+                if self.focused_section == Section::AgentPanes {
+                    let idx = self.selected_pane;
                     self.focus_selected(idx);
                 }
             }
@@ -640,13 +598,13 @@ impl Model {
                 close_self();
             }
             BareKey::Char('x') | BareKey::Char('X') => {
-                if self.focused_section == Section::Sessions {
-                    let idx = self.selected_session;
+                if self.focused_section == Section::AgentPanes {
+                    let idx = self.selected_pane;
                     self.kill_selected(idx);
                 }
             }
             BareKey::Char('n') | BareKey::Char('N') => {
-                self.start_new_session_workspace();
+                self.start_new_pane_workspace();
             }
             BareKey::Char('a') | BareKey::Char('A') => {
                 self.start_agent_create();
@@ -661,24 +619,20 @@ impl Model {
         }
     }
 
-    fn handle_key_event_new_session_workspace(&mut self, key: KeyWithModifier) {
+    fn handle_key_event_new_pane_workspace(&mut self, key: KeyWithModifier) {
         if handle_text_edit(&mut self.workspace_input, &key) {
             return;
         }
         match key.bare_key {
             BareKey::Enter => {
-                if self.workspace_input.trim().is_empty() {
-                    self.error_message = "workspace path required".to_string();
-                } else {
-                    self.mode = Mode::NewSessionTabSelect;
-                    self.wizard_tab_idx = 0;
-                    self.wizard_agent_idx = 0;
-                    self.reset_status();
-                }
+                self.mode = Mode::NewPaneTabSelect;
+                self.wizard_tab_idx = 0;
+                self.wizard_agent_idx = 0;
+                self.reset_status();
             }
             BareKey::Esc => self.cancel_to_view(),
             BareKey::Tab => {
-                self.mode = Mode::NewSessionTabSelect;
+                self.mode = Mode::NewPaneTabSelect;
                 self.wizard_tab_idx = 0;
                 self.wizard_agent_idx = 0;
                 self.reset_status();
@@ -687,7 +641,7 @@ impl Model {
         }
     }
 
-    fn handle_key_event_new_session_tab_select(&mut self, key: KeyWithModifier) {
+    fn handle_key_event_new_pane_tab_select(&mut self, key: KeyWithModifier) {
         let choices = self.tab_names.len().saturating_add(1);
         match key.bare_key {
             BareKey::Up => {
@@ -701,7 +655,7 @@ impl Model {
                 }
             }
             BareKey::Enter => {
-                self.mode = Mode::NewSessionAgentSelect;
+                self.mode = Mode::NewPaneAgentSelect;
                 self.wizard_agent_idx = 0;
             }
             BareKey::Esc => self.cancel_to_view(),
@@ -710,7 +664,7 @@ impl Model {
         }
     }
 
-    fn handle_key_event_new_session_agent_select(&mut self, key: KeyWithModifier) {
+    fn handle_key_event_new_pane_agent_select(&mut self, key: KeyWithModifier) {
         let choices = self.agents.len().saturating_add(1);
         match key.bare_key {
             BareKey::Up => {
@@ -728,12 +682,12 @@ impl Model {
                     let agent = self.agents[self.wizard_agent_idx].name.clone();
                     let workspace = self.workspace_input.trim().to_string();
                     let tab_choice = selected_tab_choice(self);
-                    self.spawn_session(workspace, agent, tab_choice);
+                    self.spawn_agent_pane(workspace, agent, tab_choice);
                     if self.error_message.is_empty() {
                         self.view_preserve_messages();
                     }
                 } else {
-                    self.mode = Mode::NewSessionAgentCreate;
+                    self.mode = Mode::NewPaneAgentCreate;
                     self.agent_name_input.clear();
                     self.agent_command_input.clear();
                     self.agent_env_input.clear();
@@ -765,7 +719,7 @@ impl Model {
                     Ok(agent) => {
                         let result = match self.mode {
                             Mode::AgentFormEdit => self.apply_agent_edit(agent.clone()),
-                            Mode::AgentFormCreate | Mode::NewSessionAgentCreate => {
+                            Mode::AgentFormCreate | Mode::NewPaneAgentCreate => {
                                 self.apply_agent_create(agent.clone())
                             }
                             _ => Err("invalid mode".to_string()),
@@ -776,7 +730,7 @@ impl Model {
                                 if launch_after {
                                     let workspace = self.workspace_input.trim().to_string();
                                     let tab_choice = selected_tab_choice(self);
-                                    self.spawn_session(workspace, agent.name.clone(), tab_choice);
+                                    self.spawn_agent_pane(workspace, agent.name.clone(), tab_choice);
                                 }
                                 if self.error_message.is_empty() {
                                     self.view_preserve_messages();
@@ -990,9 +944,9 @@ impl ZellijPlugin for Maestro {
 
 fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
-    out.push_str(&render_workspaces(model, cols));
+    out.push_str(&render_tabs(model, cols));
     out.push('\n');
-    out.push_str(&render_sessions(model, cols));
+    out.push_str(&render_agent_panes(model, cols));
     out.push('\n');
     out.push_str(&render_agents(model, cols));
     if let Some(overlay) = render_overlay(model, cols) {
@@ -1004,54 +958,54 @@ fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out
 }
 
-fn render_workspaces(model: &Model, cols: usize) -> String {
-    let mut table = Table::new().add_row(vec!["Workspace", "Sessions"]);
-    for (idx, ws) in model.workspaces.iter().enumerate() {
-        let name = truncate(&ws.name, cols.saturating_sub(10));
+fn render_tabs(model: &Model, cols: usize) -> String {
+    let mut table = Table::new().add_row(vec!["Tab", "Agent Panes"]);
+    for (idx, tab_name) in model.tab_names.iter().enumerate() {
+        let name = truncate(tab_name, cols.saturating_sub(10));
         let count = model
-            .sessions
+            .agent_panes
             .iter()
-            .filter(|s| s.workspace_path == ws.path)
+            .filter(|p| p.tab_name == *tab_name)
             .count()
             .to_string();
         let row = vec![name, count];
-        let styled = if idx == model.selected_workspace {
+        let styled = if idx == model.selected_tab {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
         } else {
             row.into_iter().map(Text::new).collect()
         };
         table = table.add_styled_row(styled);
     }
-    if model.workspaces.is_empty() {
-        table = table.add_row(vec!["(no workspaces)", ""]);
+    if model.tab_names.is_empty() {
+        table = table.add_row(vec!["(no tabs)", ""]);
     }
     serialize_table(&table)
 }
 
-fn render_sessions(model: &Model, cols: usize) -> String {
+fn render_agent_panes(model: &Model, cols: usize) -> String {
     let mut table = Table::new().add_row(vec!["Agent", "Status", "Tab"]);
-    let sessions = filtered_sessions(model);
-    for (idx, sess) in sessions.iter().enumerate() {
-        let agent = if sess.agent_name.is_empty() {
+    let panes = filtered_panes(model);
+    for (idx, pane) in panes.iter().enumerate() {
+        let agent = if pane.agent_name.is_empty() {
             "(agent)"
         } else {
-            &sess.agent_name
+            &pane.agent_name
         };
-        let status = match sess.status {
-            SessionStatus::Running => "RUNNING",
-            SessionStatus::Exited(_) => "EXITED",
+        let status = match pane.status {
+            PaneStatus::Running => "RUNNING",
+            PaneStatus::Exited(_) => "EXITED",
         };
-        let tab = truncate(&sess.tab_name, cols.saturating_sub(20));
+        let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
         let row = vec![agent.to_string(), status.to_string(), tab];
-        let styled = if idx == model.selected_session {
+        let styled = if idx == model.selected_pane {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
         } else {
             row.into_iter().map(Text::new).collect()
         };
         table = table.add_styled_row(styled);
     }
-    if sessions.is_empty() {
-        table = table.add_row(vec!["(no sessions)", "", ""]);
+    if panes.is_empty() {
+        table = table.add_row(vec!["(no agent panes)", "", ""]);
     }
     serialize_table(&table)
 }
@@ -1079,13 +1033,13 @@ fn render_agents(model: &Model, _cols: usize) -> String {
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
     match model.mode {
         Mode::View => None,
-        Mode::NewSessionWorkspace => Some(format!(
-            "New Session: workspace path\n> {}_",
+        Mode::NewPaneWorkspace => Some(format!(
+            "New Agent Pane: workspace path (optional)\n> {}_",
             truncate(&model.workspace_input, cols.saturating_sub(2))
         )),
-        Mode::NewSessionTabSelect => {
+        Mode::NewPaneTabSelect => {
             let mut lines = Vec::new();
-            lines.push("New Session: select tab".to_string());
+            lines.push("New Agent Pane: select tab".to_string());
             for (idx, tab) in model.tab_names.iter().enumerate() {
                 let prefix = if idx == model.wizard_tab_idx { ">" } else { " " };
                 lines.push(format!("{} {}", prefix, truncate(tab, cols.saturating_sub(2))));
@@ -1096,9 +1050,9 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
             lines.push(format!("{prefix} (new tab: {suggested})"));
             Some(lines.join("\n"))
         }
-        Mode::NewSessionAgentSelect => {
+        Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
-            lines.push("New Session: select agent or create new".to_string());
+            lines.push("New Agent Pane: select agent or create new".to_string());
             for (idx, agent) in model.agents.iter().enumerate() {
                 let prefix = if idx == model.wizard_agent_idx { ">" } else { " " };
                 lines.push(format!(
@@ -1116,9 +1070,9 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
             lines.push(format!("{prefix} (create new agent)"));
             Some(lines.join("\n"))
         }
-        Mode::NewSessionAgentCreate => Some(render_agent_form_overlay(
+        Mode::NewPaneAgentCreate => Some(render_agent_form_overlay(
             model,
-            "New Session: create agent then launch",
+            "New Agent Pane: create agent then launch",
             cols,
         )),
         Mode::AgentFormCreate => Some(render_agent_form_overlay(
@@ -1181,10 +1135,10 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
 fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode {
         Mode::View => "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete",
-        Mode::NewSessionWorkspace => "[Enter] tab step • Tab tab step • Esc cancel • type to edit path",
-        Mode::NewSessionTabSelect => "[↑/↓] choose tab • Enter confirm • Esc cancel",
-        Mode::NewSessionAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
-        Mode::NewSessionAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
+        Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
+        Mode::NewPaneTabSelect => "[↑/↓] choose tab • Enter confirm • Esc cancel",
+        Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
+        Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };
@@ -1200,17 +1154,17 @@ fn render_status(model: &Model, cols: usize) -> String {
 
 // ---------- Helpers ----------
 
-fn filtered_sessions(model: &Model) -> Vec<Session> {
-    if model.workspaces.is_empty() {
-        return model.sessions.clone();
+fn filtered_panes(model: &Model) -> Vec<AgentPane> {
+    if model.tab_names.is_empty() {
+        return model.agent_panes.clone();
     }
-    let ws_idx = model.selected_workspace.min(model.workspaces.len().saturating_sub(1));
-    let ws_path = model.workspaces.get(ws_idx).map(|w| w.path.clone());
-    match ws_path {
-        Some(path) => model
-            .sessions
+    let tab_idx = model.selected_tab.min(model.tab_names.len().saturating_sub(1));
+    let tab_name = model.tab_names.get(tab_idx).cloned();
+    match tab_name {
+        Some(name) => model
+            .agent_panes
             .iter()
-            .filter(|s| s.workspace_path == path)
+            .filter(|p| p.tab_name == name)
             .cloned()
             .collect(),
         None => Vec::new(),
@@ -1375,7 +1329,7 @@ mod tests {
     use zellij_tile::prelude::{PaneId, PaneInfo, PaneManifest};
 
     #[test]
-    fn pane_update_adds_session() {
+    fn pane_update_adds_agent_pane() {
         let mut model = Model::default();
         let pane = PaneInfo {
             id: 1,
@@ -1405,22 +1359,22 @@ mod tests {
         model.apply_pane_update(PaneManifest {
             panes: [(0_usize, vec![pane])].into_iter().collect(),
         });
-        assert_eq!(model.sessions.len(), 1);
-        assert_eq!(model.sessions[0].pane_id, Some(1));
+        assert_eq!(model.agent_panes.len(), 1);
+        assert_eq!(model.agent_panes[0].pane_id, Some(1));
     }
 
     #[test]
-    fn pane_closed_removes_session() {
+    fn pane_closed_removes_agent_pane() {
         let mut model = Model::default();
-        model.sessions.push(Session {
+        model.agent_panes.push(AgentPane {
             tab_name: "maestro:test".to_string(),
             pane_id: Some(5),
             workspace_path: "/tmp/ws".to_string(),
             agent_name: "a".to_string(),
-            status: SessionStatus::Running,
+            status: PaneStatus::Running,
         });
         model.handle_pane_closed(PaneId::Terminal(5));
-        assert!(model.sessions.is_empty());
+        assert!(model.agent_panes.is_empty());
     }
 
     #[test]
@@ -1435,10 +1389,10 @@ mod tests {
             env: None,
             note: None,
         });
-        model.spawn_session("/tmp/ws".to_string(), "codex".to_string());
-        assert_eq!(model.sessions.len(), 1);
-        assert!(model.sessions[0].tab_name.starts_with("maestro:codex:ws"));
-        assert_eq!(model.sessions[0].workspace_path, "/tmp/ws");
+        model.spawn_agent_pane("/tmp/ws".to_string(), "codex".to_string(), TabChoice::New);
+        assert_eq!(model.agent_panes.len(), 1);
+        assert!(model.agent_panes[0].tab_name.starts_with("maestro:codex:ws"));
+        assert_eq!(model.agent_panes[0].workspace_path, "/tmp/ws");
     }
 
     #[test]
@@ -1450,37 +1404,28 @@ mod tests {
     #[test]
     fn selections_clamp_and_move() {
         let mut model = Model::default();
-        model.workspaces = vec![
-            Workspace {
-                path: "/a".to_string(),
-                name: "a".to_string(),
-            },
-            Workspace {
-                path: "/b".to_string(),
-                name: "b".to_string(),
-            },
-        ];
-        model.sessions = vec![
-            Session {
-                tab_name: "maestro:a:1".to_string(),
+        model.tab_names = vec!["tab1".to_string(), "tab2".to_string()];
+        model.agent_panes = vec![
+            AgentPane {
+                tab_name: "tab1".to_string(),
                 pane_id: Some(1),
                 workspace_path: "/a".to_string(),
                 agent_name: "alpha".to_string(),
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             },
-            Session {
-                tab_name: "maestro:a:2".to_string(),
+            AgentPane {
+                tab_name: "tab1".to_string(),
                 pane_id: Some(2),
                 workspace_path: "/a".to_string(),
                 agent_name: "beta".to_string(),
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             },
-            Session {
-                tab_name: "maestro:b:1".to_string(),
+            AgentPane {
+                tab_name: "tab2".to_string(),
                 pane_id: Some(3),
                 workspace_path: "/b".to_string(),
                 agent_name: "gamma".to_string(),
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             },
         ];
         model.agents = vec![
@@ -1498,19 +1443,19 @@ mod tests {
             },
         ];
 
-        model.selected_workspace = 5;
-        model.selected_session = 5;
+        model.selected_tab = 5;
+        model.selected_pane = 5;
         model.selected_agent = 5;
         model.clamp_selections();
 
-        assert_eq!(model.selected_workspace, 1);
-        assert_eq!(model.selected_session, 0);
+        assert_eq!(model.selected_tab, 1);
+        assert_eq!(model.selected_pane, 0);
         assert_eq!(model.selected_agent, 1);
 
-        model.move_selection(Section::Workspaces, -1);
-        assert_eq!(model.selected_workspace, 0);
-        model.move_selection(Section::Sessions, 5);
-        assert_eq!(model.selected_session, 1);
+        model.move_selection(Section::Tabs, -1);
+        assert_eq!(model.selected_tab, 0);
+        model.move_selection(Section::AgentPanes, 5);
+        assert_eq!(model.selected_pane, 1);
         model.move_selection(Section::Agents, 2);
         assert_eq!(model.selected_agent, 1);
     }
@@ -1519,24 +1464,21 @@ mod tests {
     fn key_events_cycle_sections_and_move() {
         let mut model = Model::default();
         model.permissions_granted = true;
-        model.workspaces = vec![Workspace {
-            path: "/a".to_string(),
-            name: "a".to_string(),
-        }];
-        model.sessions = vec![
-            Session {
-                tab_name: "maestro:a:1".to_string(),
+        model.tab_names = vec!["tab1".to_string()];
+        model.agent_panes = vec![
+            AgentPane {
+                tab_name: "tab1".to_string(),
                 pane_id: Some(1),
                 workspace_path: "/a".to_string(),
                 agent_name: "alpha".to_string(),
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             },
-            Session {
-                tab_name: "maestro:a:2".to_string(),
+            AgentPane {
+                tab_name: "tab1".to_string(),
                 pane_id: Some(2),
                 workspace_path: "/a".to_string(),
                 agent_name: "beta".to_string(),
-                status: SessionStatus::Running,
+                status: PaneStatus::Running,
             },
         ];
         model.agents = vec![Agent {
@@ -1550,16 +1492,16 @@ mod tests {
             bare_key: BareKey::Tab,
             key_modifiers: BTreeSet::new(),
         });
-        assert_eq!(model.focused_section, Section::Sessions);
+        assert_eq!(model.focused_section, Section::AgentPanes);
         model.handle_key_event(KeyWithModifier {
             bare_key: BareKey::Down,
             key_modifiers: BTreeSet::new(),
         });
-        assert_eq!(model.selected_session, 1);
+        assert_eq!(model.selected_pane, 1);
         model.handle_key_event(KeyWithModifier {
             bare_key: BareKey::Esc,
             key_modifiers: BTreeSet::new(),
         });
-        assert_eq!(model.focused_section, Section::Workspaces);
+        assert_eq!(model.focused_section, Section::Tabs);
     }
 }
