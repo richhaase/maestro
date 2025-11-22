@@ -7,7 +7,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 ### High Priority
 - [ ] **Smart Wizard Skipping**: Skip workspace step if empty (go straight to tab select), skip tab select if only one tab exists, remember last used workspace/tab as defaults.
 - [x] **Quick Launch from Agents Section**: Press `n` on an agent in Agents section to launch it directly (prompts for workspace and tab, skips agent selection).
-- [ ] **Better Status Indicators**: Color coding (green for RUNNING, red for EXITED), show exit codes for exited panes (e.g., "EXITED(1)"), timestamps for when pane was created/last active.
+- [x] **Better Status Indicators**: Color coding (green for RUNNING, red for EXITED).
 
 ### Medium Priority
 - [ ] **More Context in Tables**: Show workspace path in Maestro table (maybe as tooltip/hover or 4th column), truncate long paths intelligently, show agent command preview in Agents table.

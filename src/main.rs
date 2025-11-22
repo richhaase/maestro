@@ -1315,18 +1315,24 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         } else {
             &pane.agent_name
         };
-        let status = match pane.status {
-            PaneStatus::Running => "RUNNING",
-            PaneStatus::Exited(_) => "EXITED",
+        let (status_text, status_color_index) = match pane.status {
+            PaneStatus::Running => ("RUNNING", 2), // Green (index 2)
+            PaneStatus::Exited(_) => ("EXITED", 1), // Red (index 1)
         };
+        
         // Column order: Tab, Agent, Status
-        let row = vec![tab, agent.to_string(), status.to_string()];
-        let styled = if idx == model.selected_pane {
-            row.into_iter().map(|c| Text::new(c).selected()).collect()
-        } else {
-            row.into_iter().map(Text::new).collect()
-        };
-        table = table.add_styled_row(styled);
+        let mut row = vec![
+            Text::new(tab),
+            Text::new(agent.to_string()),
+            Text::new(status_text.to_string()).color_all(status_color_index),
+        ];
+        
+        // Apply selection highlighting to entire row if selected
+        if idx == model.selected_pane {
+            row = row.into_iter().map(|t| t.selected()).collect();
+        }
+        
+        table = table.add_styled_row(row);
     }
     if panes.is_empty() {
         // Column order: Tab, Agent, Status
