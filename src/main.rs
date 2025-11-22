@@ -1,4 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{hash_map::DefaultHasher, BTreeMap};
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -64,6 +66,38 @@ impl Default for Section {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    View,
+    NewSessionWorkspace,
+    NewSessionTabSelect,
+    NewSessionAgentSelect,
+    NewSessionAgentCreate,
+    AgentFormCreate,
+    AgentFormEdit,
+    DeleteConfirm,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode::View
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentFormField {
+    Name,
+    Command,
+    Env,
+    Note,
+}
+
+impl Default for AgentFormField {
+    fn default() -> Self {
+        AgentFormField::Name
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Model {
     pub permissions_granted: bool,
@@ -71,12 +105,23 @@ pub struct Model {
     pub agents: Vec<Agent>,
     pub sessions: Vec<Session>,
     pub workspaces: Vec<Workspace>,
+    pub tab_names: Vec<String>,
     pub status_message: String,
     pub error_message: String,
     pub selected_workspace: usize,
     pub selected_session: usize,
     pub selected_agent: usize,
     pub focused_section: Section,
+    pub mode: Mode,
+    pub workspace_input: String,
+    pub wizard_tab_idx: usize,
+    pub agent_name_input: String,
+    pub agent_command_input: String,
+    pub agent_env_input: String,
+    pub agent_note_input: String,
+    pub agent_form_field: AgentFormField,
+    pub wizard_agent_idx: usize,
+    pub form_target_agent: Option<usize>,
 }
 
 pub struct Maestro {
@@ -109,6 +154,7 @@ impl Model {
 
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
         let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
+        self.tab_names = tab_names.clone();
         self.sessions
             .retain(|s| s.pane_id.is_some() || tab_names.contains(&s.tab_name));
         self.rebuild_workspaces();
@@ -216,7 +262,83 @@ impl Model {
             .collect();
     }
 
-    pub fn spawn_session(&mut self, workspace_path: String, agent_name: String) {
+    fn reset_status(&mut self) {
+        self.status_message.clear();
+        self.error_message.clear();
+    }
+
+    fn cancel_to_view(&mut self) {
+        self.mode = Mode::View;
+        self.reset_status();
+    }
+
+    fn view_preserve_messages(&mut self) {
+        self.mode = Mode::View;
+    }
+
+    fn start_new_session_workspace(&mut self) {
+        let default_path = self
+            .workspaces
+            .get(self.selected_workspace)
+            .map(|w| w.path.clone())
+            .unwrap_or_else(String::new);
+        self.workspace_input = default_path;
+        self.mode = Mode::NewSessionWorkspace;
+        self.wizard_agent_idx = 0;
+        self.wizard_tab_idx = 0;
+        self.reset_status();
+    }
+
+    fn start_agent_create(&mut self) {
+        self.mode = Mode::AgentFormCreate;
+        self.agent_name_input.clear();
+        self.agent_command_input.clear();
+        self.agent_env_input.clear();
+        self.agent_note_input.clear();
+        self.agent_form_field = AgentFormField::Name;
+        self.form_target_agent = None;
+        self.reset_status();
+    }
+
+    fn start_agent_edit(&mut self) {
+        if self.agents.is_empty() {
+            self.error_message = "no agents to edit".to_string();
+            return;
+        }
+        let idx = self.selected_agent.min(self.agents.len().saturating_sub(1));
+        if let Some(agent) = self.agents.get(idx) {
+            self.agent_name_input = agent.name.clone();
+            self.agent_command_input = agent.command.join(" ");
+            self.agent_env_input = agent
+                .env
+                .as_ref()
+                .map(|m| {
+                    m.iter()
+                        .map(|(k, v)| format!("{k}={v}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .unwrap_or_default();
+            self.agent_note_input = agent.note.clone().unwrap_or_default();
+            self.agent_form_field = AgentFormField::Name;
+            self.form_target_agent = Some(idx);
+            self.mode = Mode::AgentFormEdit;
+            self.reset_status();
+        }
+    }
+
+    fn start_agent_delete_confirm(&mut self) {
+        if self.agents.is_empty() {
+            self.error_message = "no agents to delete".to_string();
+            return;
+        }
+        let idx = self.selected_agent.min(self.agents.len().saturating_sub(1));
+        self.form_target_agent = Some(idx);
+        self.mode = Mode::DeleteConfirm;
+        self.reset_status();
+    }
+
+    pub fn spawn_session(&mut self, workspace_path: String, agent_name: String, tab_choice: TabChoice) {
         if !self.permissions_granted {
             self.error_message = "permissions not granted".to_string();
             return;
@@ -234,6 +356,18 @@ impl Model {
             workspace_basename(&workspace_path),
             Uuid::new_v4()
         );
+        let tab_target = match tab_choice {
+            TabChoice::Existing(name) => name,
+            TabChoice::New => {
+                let name = workspace_tab_name(&workspace_path);
+                new_tab(Some(name.clone()), Some(workspace_path.clone()));
+                if !self.tab_names.contains(&name) {
+                    self.tab_names.push(name.clone());
+                }
+                name
+            }
+        };
+        go_to_tab_name(&tab_target);
         let cmd = build_command_with_env(&agent);
         let mut ctx = BTreeMap::new();
         ctx.insert("pane_title".to_string(), title.clone());
@@ -242,7 +376,11 @@ impl Model {
         }
         ctx.insert("agent".to_string(), agent.name.clone());
 
-        open_command_pane(CommandToRun::new(cmd.join(" ")), ctx);
+        let mut command_to_run = CommandToRun::new(cmd.join(" "));
+        if !workspace_path.is_empty() {
+            command_to_run.cwd = Some(PathBuf::from(workspace_path.clone()));
+        }
+        open_command_pane(command_to_run, ctx);
 
         self.sessions.push(Session {
             tab_name: title,
@@ -267,23 +405,13 @@ impl Model {
             return;
         }
         let sess = &sessions[selected_idx];
-        let mut focused = false;
-        if !sess.tab_name.is_empty() {
-            go_to_tab_name(&sess.tab_name);
-            focused = true;
+        let tab_target = workspace_tab_name(&sess.workspace_path);
+        go_to_tab_name(&tab_target);
+        if let Some(pid) = sess.pane_id {
+            focus_terminal_pane(pid, false);
         }
-        if !focused {
-            if let Some(pid) = sess.pane_id {
-                focus_terminal_pane(pid, false);
-                focused = true;
-            }
-        }
-        if focused {
-            self.error_message.clear();
-            self.status_message = "Focused session".to_string();
-        } else {
-            self.error_message = "no valid target to focus".to_string();
-        }
+        self.error_message.clear();
+        self.status_message = "Focused session".to_string();
     }
 
     pub fn kill_selected(&mut self, selected_idx: usize) {
@@ -385,6 +513,18 @@ impl Model {
     }
 
     fn handle_key_event(&mut self, key: KeyWithModifier) {
+        match self.mode {
+            Mode::View => self.handle_key_event_view(key),
+            Mode::NewSessionWorkspace => self.handle_key_event_new_session_workspace(key),
+            Mode::NewSessionTabSelect => self.handle_key_event_new_session_tab_select(key),
+            Mode::NewSessionAgentSelect => self.handle_key_event_new_session_agent_select(key),
+            Mode::NewSessionAgentCreate => self.handle_key_event_agent_form(key, true),
+            Mode::AgentFormCreate | Mode::AgentFormEdit => self.handle_key_event_agent_form(key, false),
+            Mode::DeleteConfirm => self.handle_key_event_delete_confirm(key),
+        }
+    }
+
+    fn handle_key_event_view(&mut self, key: KeyWithModifier) {
         let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
         match key.bare_key {
             BareKey::Up => self.move_selection(self.focused_section, -1),
@@ -401,8 +541,7 @@ impl Model {
             }
             BareKey::Esc => {
                 self.focused_section = Section::Workspaces;
-                self.status_message.clear();
-                self.error_message.clear();
+                self.reset_status();
                 self.clamp_selections();
             }
             BareKey::Char('x') | BareKey::Char('X') => {
@@ -412,23 +551,230 @@ impl Model {
                 }
             }
             BareKey::Char('n') | BareKey::Char('N') => {
-                self.status_message = "TODO: new session flow".to_string();
-                self.error_message.clear();
+                self.start_new_session_workspace();
             }
             BareKey::Char('a') | BareKey::Char('A') => {
-                self.status_message = "TODO: add agent".to_string();
-                self.error_message.clear();
+                self.start_agent_create();
             }
             BareKey::Char('e') | BareKey::Char('E') => {
-                self.status_message = "TODO: edit agent".to_string();
-                self.error_message.clear();
+                self.start_agent_edit();
             }
             BareKey::Char('d') | BareKey::Char('D') => {
-                self.status_message = "TODO: delete agent".to_string();
-                self.error_message.clear();
+                self.start_agent_delete_confirm();
             }
             _ => {}
         }
+    }
+
+    fn handle_key_event_new_session_workspace(&mut self, key: KeyWithModifier) {
+        if handle_text_edit(&mut self.workspace_input, &key) {
+            return;
+        }
+        match key.bare_key {
+            BareKey::Enter => {
+                if self.workspace_input.trim().is_empty() {
+                    self.error_message = "workspace path required".to_string();
+                } else {
+                    self.mode = Mode::NewSessionTabSelect;
+                    self.wizard_tab_idx = 0;
+                    self.wizard_agent_idx = 0;
+                    self.reset_status();
+                }
+            }
+            BareKey::Esc => self.cancel_to_view(),
+            BareKey::Tab => {
+                self.mode = Mode::NewSessionTabSelect;
+                self.wizard_tab_idx = 0;
+                self.wizard_agent_idx = 0;
+                self.reset_status();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_key_event_new_session_tab_select(&mut self, key: KeyWithModifier) {
+        let choices = self.tab_names.len().saturating_add(1);
+        match key.bare_key {
+            BareKey::Up => {
+                if self.wizard_tab_idx > 0 {
+                    self.wizard_tab_idx -= 1;
+                }
+            }
+            BareKey::Down => {
+                if self.wizard_tab_idx + 1 < choices {
+                    self.wizard_tab_idx += 1;
+                }
+            }
+            BareKey::Enter => {
+                self.mode = Mode::NewSessionAgentSelect;
+                self.wizard_agent_idx = 0;
+            }
+            BareKey::Esc => self.cancel_to_view(),
+            BareKey::Tab => self.cancel_to_view(),
+            _ => {}
+        }
+    }
+
+    fn handle_key_event_new_session_agent_select(&mut self, key: KeyWithModifier) {
+        let choices = self.agents.len().saturating_add(1);
+        match key.bare_key {
+            BareKey::Up => {
+                if self.wizard_agent_idx > 0 {
+                    self.wizard_agent_idx -= 1;
+                }
+            }
+            BareKey::Down => {
+                if self.wizard_agent_idx + 1 < choices {
+                    self.wizard_agent_idx += 1;
+                }
+            }
+            BareKey::Enter => {
+                if self.wizard_agent_idx < self.agents.len() {
+                    let agent = self.agents[self.wizard_agent_idx].name.clone();
+                    let workspace = self.workspace_input.trim().to_string();
+                    let tab_choice = selected_tab_choice(self);
+                    self.spawn_session(workspace, agent, tab_choice);
+                    if self.error_message.is_empty() {
+                        self.view_preserve_messages();
+                    }
+                } else {
+                    self.mode = Mode::NewSessionAgentCreate;
+                    self.agent_name_input.clear();
+                    self.agent_command_input.clear();
+                    self.agent_env_input.clear();
+                    self.agent_note_input.clear();
+                    self.agent_form_field = AgentFormField::Name;
+                    self.reset_status();
+                }
+            }
+            BareKey::Esc => self.cancel_to_view(),
+            BareKey::Tab => self.cancel_to_view(),
+            _ => {}
+        }
+    }
+
+    fn handle_key_event_agent_form(&mut self, key: KeyWithModifier, launch_after: bool) {
+        if handle_form_text(self, &key) {
+            return;
+        }
+        let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
+        match key.bare_key {
+            BareKey::Tab if shift_tab => {
+                self.agent_form_field = prev_field(self.agent_form_field);
+            }
+            BareKey::Tab => {
+                self.agent_form_field = next_field(self.agent_form_field);
+            }
+            BareKey::Enter => {
+                match self.build_agent_from_inputs() {
+                    Ok(agent) => {
+                        let result = match self.mode {
+                            Mode::AgentFormEdit => self.apply_agent_edit(agent.clone()),
+                            Mode::AgentFormCreate | Mode::NewSessionAgentCreate => {
+                                self.apply_agent_create(agent.clone())
+                            }
+                            _ => Ok(()),
+                        };
+                        match result {
+                            Ok(()) => {
+                                if launch_after {
+                                    let workspace = self.workspace_input.trim().to_string();
+                                    let tab_choice = selected_tab_choice(self);
+                                    self.spawn_session(workspace, agent.name.clone(), tab_choice);
+                                }
+                                if self.error_message.is_empty() {
+                                    self.view_preserve_messages();
+                                }
+                            }
+                            Err(err) => {
+                                self.error_message = err;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        self.error_message = err;
+                    }
+                }
+            }
+            BareKey::Esc => self.cancel_to_view(),
+            _ => {}
+        }
+    }
+
+    fn handle_key_event_delete_confirm(&mut self, key: KeyWithModifier) {
+        match key.bare_key {
+            BareKey::Enter | BareKey::Char('y') | BareKey::Char('Y') => {
+                if let Some(idx) = self.form_target_agent.take() {
+                    if idx < self.agents.len() {
+                        self.agents.remove(idx);
+                        self.selected_agent = self.selected_agent.min(self.agents.len().saturating_sub(1));
+                        self.status_message = "Agent deleted".to_string();
+                    }
+                }
+                self.cancel_to_view();
+            }
+            BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => self.cancel_to_view(),
+            _ => {}
+        }
+    }
+
+    fn apply_agent_create(&mut self, agent: Agent) -> Result<(), String> {
+        if self.agents.iter().any(|a| a.name == agent.name) {
+            return Err("duplicate agent name".to_string());
+        }
+        self.agents.push(agent);
+        self.selected_agent = self.agents.len().saturating_sub(1);
+        self.status_message = "Agent added (not yet persisted)".to_string();
+        self.error_message.clear();
+        Ok(())
+    }
+
+    fn apply_agent_edit(&mut self, agent: Agent) -> Result<(), String> {
+        if let Some(idx) = self.form_target_agent {
+            if idx < self.agents.len() {
+                if self
+                    .agents
+                    .iter()
+                    .enumerate()
+                    .any(|(i, a)| i != idx && a.name == agent.name)
+                {
+                    return Err("duplicate agent name".to_string());
+                }
+                self.agents[idx] = agent;
+                self.selected_agent = idx;
+                self.status_message = "Agent updated (not yet persisted)".to_string();
+                self.error_message.clear();
+                return Ok(());
+            }
+        }
+        Err("no agent selected".to_string())
+    }
+
+    fn build_agent_from_inputs(&self) -> Result<Agent, String> {
+        let name = self.agent_name_input.trim().to_string();
+        if name.is_empty() {
+            return Err("agent name required".to_string());
+        }
+        let cmd_parts: Vec<String> = self
+            .agent_command_input
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
+        if cmd_parts.is_empty() {
+            return Err("command required".to_string());
+        }
+        let env = parse_env_input(&self.agent_env_input)?;
+        let note = if self.agent_note_input.trim().is_empty() {
+            None
+        } else {
+            Some(self.agent_note_input.trim().to_string())
+        };
+        Ok(Agent {
+            name,
+            command: cmd_parts,
+            env,
+            note,
+        })
     }
 }
 
@@ -522,6 +868,10 @@ fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out.push_str(&render_sessions(model, cols));
     out.push('\n');
     out.push_str(&render_agents(model, cols));
+    if let Some(overlay) = render_overlay(model, cols) {
+        out.push('\n');
+        out.push_str(&overlay);
+    }
     out.push('\n');
     out.push_str(&render_status(model, cols));
     out
@@ -599,8 +949,118 @@ fn render_agents(model: &Model, _cols: usize) -> String {
     serialize_ribbon_line(ribbons)
 }
 
+fn render_overlay(model: &Model, cols: usize) -> Option<String> {
+    match model.mode {
+        Mode::View => None,
+        Mode::NewSessionWorkspace => Some(format!(
+            "New Session: workspace path\n> {}_",
+            truncate(&model.workspace_input, cols.saturating_sub(2))
+        )),
+        Mode::NewSessionTabSelect => {
+            let mut lines = Vec::new();
+            lines.push("New Session: select tab".to_string());
+            for (idx, tab) in model.tab_names.iter().enumerate() {
+                let prefix = if idx == model.wizard_tab_idx { ">" } else { " " };
+                lines.push(format!("{} {}", prefix, truncate(tab, cols.saturating_sub(2))));
+            }
+            let create_idx = model.tab_names.len();
+            let prefix = if model.wizard_tab_idx == create_idx { ">" } else { " " };
+            let suggested = workspace_tab_name(&model.workspace_input);
+            lines.push(format!("{prefix} (new tab: {suggested})"));
+            Some(lines.join("\n"))
+        }
+        Mode::NewSessionAgentSelect => {
+            let mut lines = Vec::new();
+            lines.push("New Session: select agent or create new".to_string());
+            for (idx, agent) in model.agents.iter().enumerate() {
+                let prefix = if idx == model.wizard_agent_idx { ">" } else { " " };
+                lines.push(format!(
+                    "{} {}",
+                    prefix,
+                    truncate(&agent.name, cols.saturating_sub(2))
+                ));
+            }
+            let create_idx = model.agents.len();
+            let prefix = if model.wizard_agent_idx == create_idx {
+                ">"
+            } else {
+                " "
+            };
+            lines.push(format!("{prefix} (create new agent)"));
+            Some(lines.join("\n"))
+        }
+        Mode::NewSessionAgentCreate => Some(render_agent_form_overlay(
+            model,
+            "New Session: create agent then launch",
+            cols,
+        )),
+        Mode::AgentFormCreate => Some(render_agent_form_overlay(
+            model,
+            "Add agent (not yet persisted)",
+            cols,
+        )),
+        Mode::AgentFormEdit => Some(render_agent_form_overlay(
+            model,
+            "Edit agent (not yet persisted)",
+            cols,
+        )),
+        Mode::DeleteConfirm => {
+            let name = model
+                .form_target_agent
+                .and_then(|idx| model.agents.get(idx))
+                .map(|a| a.name.as_str())
+                .unwrap_or("(unknown)");
+            Some(format!(
+                "Delete agent \"{name}\"? Enter/y to delete, Esc/n to cancel"
+            ))
+        }
+    }
+}
+
+fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String {
+    let mut lines = Vec::new();
+    lines.push(title.to_string());
+    let mk = |label: &str, val: &str, field: AgentFormField, current: AgentFormField| {
+        let marker = if field == current { ">" } else { " " };
+        format!("{marker} {label}: {}", truncate(val, cols.saturating_sub(label.len() + 4)))
+    };
+    lines.push(mk(
+        "Name",
+        &model.agent_name_input,
+        AgentFormField::Name,
+        model.agent_form_field,
+    ));
+    lines.push(mk(
+        "Command",
+        &model.agent_command_input,
+        AgentFormField::Command,
+        model.agent_form_field,
+    ));
+    lines.push(mk(
+        "Env",
+        &model.agent_env_input,
+        AgentFormField::Env,
+        model.agent_form_field,
+    ));
+    lines.push(mk(
+        "Note",
+        &model.agent_note_input,
+        AgentFormField::Note,
+        model.agent_form_field,
+    ));
+    lines.join("\n")
+}
+
 fn render_status(model: &Model, cols: usize) -> String {
-    let hints = "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete";
+    let hints = match model.mode {
+        Mode::View => "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete",
+        Mode::NewSessionWorkspace => "[Enter] tab step • Tab tab step • Esc cancel • type to edit path",
+        Mode::NewSessionTabSelect => "[↑/↓] choose tab • Enter confirm • Esc cancel",
+        Mode::NewSessionAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
+        Mode::NewSessionAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
+        Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
+        Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
+    };
     let msg = if !model.error_message.is_empty() {
         format!("ERROR: {}", model.error_message)
     } else if model.status_message.is_empty() {
@@ -660,8 +1120,106 @@ fn workspace_basename(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
+fn workspace_tab_name(path: &str) -> String {
+    let base = if path.is_empty() {
+        "workspace".to_string()
+    } else {
+        workspace_basename(path)
+    };
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let hash = hasher.finish();
+    let short = format!("{hash:016x}");
+    let suffix = &short[..6.min(short.len())];
+    format!("maestro:{base}:{suffix}")
+}
+
+#[derive(Debug, Clone)]
+pub enum TabChoice {
+    Existing(String),
+    New,
+}
+
+fn selected_tab_choice(model: &Model) -> TabChoice {
+    if model.wizard_tab_idx < model.tab_names.len() {
+        TabChoice::Existing(model.tab_names[model.wizard_tab_idx].clone())
+    } else {
+        TabChoice::New
+    }
+}
+
 fn is_maestro_tab(title: &str) -> bool {
     title.starts_with("maestro:")
+}
+
+fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
+    match key.bare_key {
+        BareKey::Backspace => {
+            target.pop();
+            true
+        }
+        BareKey::Delete => {
+            target.clear();
+            true
+        }
+        BareKey::Char(c) => {
+            target.push(c);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
+    match model.agent_form_field {
+        AgentFormField::Name => handle_text_edit(&mut model.agent_name_input, key),
+        AgentFormField::Command => handle_text_edit(&mut model.agent_command_input, key),
+        AgentFormField::Env => handle_text_edit(&mut model.agent_env_input, key),
+        AgentFormField::Note => handle_text_edit(&mut model.agent_note_input, key),
+    }
+}
+
+fn next_field(current: AgentFormField) -> AgentFormField {
+    match current {
+        AgentFormField::Name => AgentFormField::Command,
+        AgentFormField::Command => AgentFormField::Env,
+        AgentFormField::Env => AgentFormField::Note,
+        AgentFormField::Note => AgentFormField::Name,
+    }
+}
+
+fn prev_field(current: AgentFormField) -> AgentFormField {
+    match current {
+        AgentFormField::Name => AgentFormField::Note,
+        AgentFormField::Command => AgentFormField::Name,
+        AgentFormField::Env => AgentFormField::Command,
+        AgentFormField::Note => AgentFormField::Env,
+    }
+}
+
+fn parse_env_input(input: &str) -> Result<Option<BTreeMap<String, String>>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let mut map = BTreeMap::new();
+    for pair in trimmed.split(',') {
+        if pair.trim().is_empty() {
+            continue;
+        }
+        let mut parts = pair.splitn(2, '=');
+        let key = parts
+            .next()
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string();
+        let val = parts.next().map(str::trim).unwrap_or("").to_string();
+        if key.is_empty() {
+            return Err("env entries must be KEY=VAL".to_string());
+        }
+        map.insert(key, val);
+    }
+    Ok(Some(map))
 }
 
 // ---------- Plugin registration ----------
