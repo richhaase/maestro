@@ -180,12 +180,25 @@ impl Model {
                     } else {
                         SessionStatus::Running
                     };
+                    if existing.agent_name.is_empty() || existing.workspace_path.is_empty() {
+                        if let Some((agent, workspace_hint)) = parse_title_hint(&existing.tab_name) {
+                            if existing.agent_name.is_empty() {
+                                existing.agent_name = agent;
+                            }
+                            if existing.workspace_path.is_empty() {
+                                existing.workspace_path = workspace_hint;
+                            }
+                        }
+                    }
                 } else {
+                    let (agent_name, workspace_path) = parse_title_hint(&title)
+                        .map(|(a, w)| (a, w))
+                        .unwrap_or_default();
                     self.sessions.push(Session {
                         tab_name: title,
                         pane_id: Some(pane.id),
-                        workspace_path: String::new(),
-                        agent_name: String::new(),
+                        workspace_path,
+                        agent_name,
                         status: if pane.exited {
                             SessionStatus::Exited(pane.exit_status)
                         } else {
@@ -231,6 +244,86 @@ impl Model {
         }
         self.rebuild_workspaces();
         self.clamp_selections();
+    }
+
+    fn rebuild_from_session_infos(&mut self, session_infos: &[SessionInfo]) {
+        self.sessions.clear();
+        for session in session_infos {
+            self.rebuild_from_panes_iter(session.panes.clone().panes.into_iter());
+        }
+        self.rebuild_workspaces();
+        self.clamp_selections();
+    }
+
+    fn rebuild_from_panes_iter(
+        &mut self,
+        panes_iter: impl Iterator<Item = (usize, Vec<PaneInfo>)>,
+    ) {
+        for (_tab_idx, pane_list) in panes_iter {
+            for pane in pane_list {
+                let title = pane.title.clone();
+                if !is_maestro_tab(&title) {
+                    continue;
+                }
+                let (agent_name, workspace_path) = parse_title_hint(&title)
+                    .map(|(a, w)| (a, w))
+                    .unwrap_or_default();
+                self.sessions.push(Session {
+                    tab_name: title,
+                    pane_id: Some(pane.id),
+                    workspace_path,
+                    agent_name,
+                    status: if pane.exited {
+                        SessionStatus::Exited(pane.exit_status)
+                    } else {
+                        SessionStatus::Running
+                    },
+                });
+            }
+        }
+        self.rebuild_workspaces();
+        self.clamp_selections();
+    }
+
+    fn handle_command_pane_exited(
+        &mut self,
+        pane_id: u32,
+        exit_status: Option<i32>,
+        ctx: BTreeMap<String, String>,
+    ) {
+        let title = ctx
+            .get("pane_title")
+            .cloned()
+            .unwrap_or_else(|| format!("maestro:{}", pane_id));
+        if let Some(sess) = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.pane_id == Some(pane_id) || s.tab_name == title)
+        {
+            sess.status = SessionStatus::Exited(exit_status);
+        }
+        self.rebuild_workspaces();
+        self.clamp_selections();
+    }
+
+    fn handle_command_pane_rerun(&mut self, pane_id: u32, ctx: BTreeMap<String, String>) {
+        let title = ctx
+            .get("pane_title")
+            .cloned()
+            .unwrap_or_else(|| format!("maestro:{}", pane_id));
+        if let Some(sess) = self
+            .sessions
+            .iter_mut()
+            .find(|s| s.pane_id == Some(pane_id) || s.tab_name == title)
+        {
+            sess.status = SessionStatus::Running;
+        }
+        self.rebuild_workspaces();
+        self.clamp_selections();
+    }
+
+    fn handle_session_update(&mut self, sessions: Vec<SessionInfo>) {
+        self.rebuild_from_session_infos(&sessions);
     }
 
     fn handle_pane_closed(&mut self, pane_id: PaneId) {
@@ -842,8 +935,20 @@ impl ZellijPlugin for Maestro {
                 self.model.apply_pane_update(manifest);
                 true
             }
+            Event::SessionUpdate(session_info, _resurrectable) => {
+                self.model.handle_session_update(session_info);
+                true
+            }
             Event::CommandPaneOpened(pane_id, ctx) => {
                 self.model.handle_command_pane_opened(pane_id, ctx);
+                true
+            }
+            Event::CommandPaneExited(pane_id, exit_status, ctx) => {
+                self.model.handle_command_pane_exited(pane_id, exit_status, ctx);
+                true
+            }
+            Event::CommandPaneReRun(pane_id, ctx) => {
+                self.model.handle_command_pane_rerun(pane_id, ctx);
                 true
             }
             Event::PaneClosed(pane_id) => {
@@ -1172,6 +1277,19 @@ fn selected_tab_choice(model: &Model) -> TabChoice {
 
 fn is_maestro_tab(title: &str) -> bool {
     title.starts_with("maestro:")
+}
+
+fn parse_title_hint(title: &str) -> Option<(String, String)> {
+    if !is_maestro_tab(title) {
+        return None;
+    }
+    let parts: Vec<&str> = title.split(':').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let agent = parts.get(1).unwrap_or(&"").to_string();
+    let workspace_hint = parts.get(2).unwrap_or(&"").to_string();
+    Some((agent, workspace_hint))
 }
 
 fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
