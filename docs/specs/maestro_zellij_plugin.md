@@ -16,11 +16,17 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 
 ## Data model & persistence
 - **Agents** (persisted): `{ name, command[], env{K:V}?, note? }`
-  - Stored as JSON/TOML at `~/.config/maestro/agents.{json|toml}` (resolved under `/host`).
+  - Stored as KDL at `~/.config/maestro/agents.kdl` (resolved under `/host`).
   - Unique names, non-empty command.
-- **Runtime sessions** (in-memory, rebuilt from events): `{ tab_name, pane_id?, workspace_path, agent_name }`
-  - Session identity: `tab_name` + `pane_id` (when available) + `workspace_path` + `agent_name`. Keep all four to avoid killing/focusing the wrong pane when duplicates exist.
-- **Workspaces**: derived set of paths seen in sessions + user inputs; lightweight list, no file.
+- **Agent Panes** (in-memory, rebuilt from events): `{ pane_title, tab_name, pane_id?, workspace_path, agent_name, status }`
+  - `pane_title`: Internal maestro title (e.g., `maestro:<agent>:<basename>:<uuid>`) set when creating pane
+  - `tab_name`: Actual Zellij tab name where the pane lives (may differ from `pane_title` if Zellij changes it)
+  - `pane_id`: Zellij-assigned pane ID (available after `CommandPaneOpened` event)
+  - `workspace_path`: CWD for the agent pane
+  - `agent_name`: Name of the agent running in this pane
+  - `status`: Running or Exited with exit code
+  - Identity: `pane_id` is primary identifier; `pane_title` used for matching during creation; `tab_name` used for filtering/display
+- **Tabs**: List of Zellij tab names, updated from `TabUpdate` events
 - **Concurrency**: `/data` is shared across plugin instances (multi-client). Writes are atomic/overwrite; “last write wins”. Consider simple file locks or retry if write fails.
 
 ## Permissions (requested in `load`)
@@ -51,7 +57,7 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 - Status line for errors/info; concise key hints.
 
 ## Behavior details
-- **Launch**: Resolve workspace path (optional, for CWD); pick tab (existing or create new); pick agent; call `open_command_pane` with env baked into argv and unique title; record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
+- **Launch**: Resolve workspace path (optional, for CWD); pick tab (existing or create new); pick agent; call `open_command_pane` with env baked into argv and unique title (`maestro:<agent>:<basename>:<uuid>`); record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
 - **Focus**: Prefer `go_to_tab_name` on recorded tab name; fallback to pane id if present; surface error if missing.
 - **Kill**: Close by `pane_id` when known; then drop agent pane from memory.
 - **Resync**: Maintain a “seen panes” map; rebuild agent panes from `TabUpdate`/`PaneUpdate` on each pass; drop stale entries. Keep optional repair path via `list_clients` if event sync drifts.
@@ -59,10 +65,10 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 - **Exit**: `BeforeClose` best-effort; writes are immediate so nothing critical to flush.
 
 ## Event/command matrix (how each action works)
-- **Launch**: request permissions in `load`; issue `open_command_pane` with cwd/env/title; update state on `CommandPaneOpened` (pane_id) and `PaneUpdate`/`TabUpdate` deltas; expect `CommandPaneExited/ReRun` for lifecycle.
+- **Launch**: request permissions in `load`; issue `open_command_pane` with cwd/env/title (`maestro:<agent>:<basename>:<uuid>`); add pane entry with `pane_id: None`; update on `CommandPaneOpened` (set `pane_id`, match by `pane_title` from context); `PaneUpdate` updates status/tab_name by `pane_id`.
 - **Focus**: call `go_to_tab_name` using stored tab name; if that fails, call `focus_*_pane` with `pane_id`; TabUpdate reflects focus change if needed for UI.
 - **Kill**: call `close_terminal_pane` / `close_plugin_pane` with `pane_id`; expect `PaneClosed` and drop from agent panes.
-- **Resync**: reconcile on every `TabUpdate`/`PaneUpdate`; optional manual repair via `list_clients` + reply event; rebuild agent pane list from events, not persisted state.
+- **Resync**: On plugin reload, `SessionUpdate` rebuilds panes using heuristic (match command pane titles to agent names, since Zellij changes titles). On `TabUpdate`, update tab list and remove panes in deleted tabs. On `PaneUpdate`, update status/tab_name by `pane_id` (only update `tab_name` if empty or invalid to prevent reassignments). Rebuild agent pane list from events, not persisted state.
 - **Agent CRUD**: no plugin events; read/write `/data/agents.kdl`; rehydrate agents list immediately after file write.
 - **BeforeClose**: ignore for persistence (writes immediate); can clear transient state.
 

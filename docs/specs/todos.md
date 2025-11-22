@@ -3,16 +3,17 @@
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
 ## Next actions (do in order)
-- [~] Agent pane persistence/resync: rebuild agent panes from events after reload (or via `list_clients` repair) so panes survive plugin reload; handle `CommandPaneExited/ReRun` to keep statuses current.
-- [ ] Resync robustness: reconcile agent panes on `TabUpdate`/`PaneUpdate` deltas, drop stale entries, and add optional `list_clients` repair path if drift is detected.
+- [x] **Agent pane persistence/resync**: Rebuild agent panes from events after reload. Panes survive plugin reload via `SessionUpdate` recovery with heuristic matching (agent name from pane title). Handle `CommandPaneExited/ReRun` to keep statuses current.
+- [x] **Resync robustness**: Reconcile agent panes on `TabUpdate`/`PaneUpdate` deltas. Fixed tab name stability by only updating `tab_name` when empty or invalid, preventing incorrect reassignments when tabs are reordered. Drop stale entries when tabs are removed.
 - [ ] Permissions + config path polish: confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
 - [ ] Locate persisted agent files in practice (current `/host` maps to plugin launch CWD, yielding `./.config/maestro/agents.kdl`); document actual host path/mount and resolve path strategy.
-- [ ] Agent pane resync follow-up: confirm event availability post-reload (SessionUpdate/PaneUpdate) or add a `list_clients` repair path to restore panes across reloads.
 - [ ] Tests: cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and agent pane reconciliation.
 - [ ] Docs: refresh README/spec to describe controls, config path, build/reload steps, and current limitations once the prototype works.
 
 ## Done
 - [x] **Design refactor**: Simplified model from Session/Workspace to AgentPane/Tabs. Removed Workspace abstraction; tabs are first-class, workspace_path is just metadata (CWD). Renamed all types and methods accordingly.
+- [x] **Pane tracking fixes**: Fixed pane identification by separating `pane_title` (internal maestro title) from `tab_name` (actual Zellij tab). Fixed tab name stability by only updating when empty/invalid, preventing count flickering when tabs are reordered.
+- [x] **Pane recovery**: Implemented heuristic recovery of panes after plugin reload by matching command pane titles to agent names (handles Zellij changing pane titles to command names). Panes are correctly restored and tracked across reloads.
 - [x] Agent CRUD + persistence: parse command/env/note inputs, validate (unique name, non-empty command), call `save_agents` on add/edit/delete, and reload list immediately (KDL config at `~/.config/maestro/agents.kdl`).
 - [x] Wire input handling and selections: subscribe to key events (arrows, Tab, Enter, Esc, n/a/e/d/x) to move between sections (Tabs/AgentPanes/Agents), change selected items, and surface key hints in the status line.
 - [x] New agent pane wizard + launch: workspace path prompt (optional), tab selection (existing or new), agent pick/create inline, build command with env, set cwd/title context, call `open_command_pane`, and stash agent pane entry.
