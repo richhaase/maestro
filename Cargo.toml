@@ -6,9 +6,6 @@ license = "MIT OR Apache-2.0"
 description = "Maestro Zellij plugin (ground-up, Zellij-only)"
 readme = "README.md"
 
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

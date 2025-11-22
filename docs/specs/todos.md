@@ -1,16 +1,23 @@
-# Maestro Zellij Plugin – MVP Checklist
+# Maestro Zellij Plugin – MVP Checklist (ordered toward a working prototype)
 
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 
-- [x] **Rust plugin scaffold**: set up `zellij-tile` plugin crate targeting `wasm32-wasi`, add dev layout for hot reload (`start-or-reload-plugin`).
-- [x] **Permissions/request flow**: request `ReadApplicationState`, `ChangeApplicationState`, `RunCommands`/`OpenTerminalsOrPlugins` (as needed) at load; handle denial UX.
-- [x] **Agent persistence layer**: read/write `~/.config/maestro/agents.{json|toml}` (via `/host`) with validation (unique name, command non-empty); resolve concurrency (last-write wins + simple guard).
-- [x] **State model & resync**: in-memory maps for workspaces/sessions; subscribe to `TabUpdate`/`PaneUpdate`/`SessionUpdate`/`CommandPane*`/`PaneClosed`; reconcile on each event; optional `list_clients` repair path.
-- [x] **Launch pipeline**: implement `open_command_pane` (or `open_terminal`) with unique tab title (add UUID) and env injected via argv (`KEY=VAL cmd ...`); capture `pane_id`; track session identity.
-- [x] **Focus/Kill actions**: focus via `go_to_tab_name` fallback `focus_*_pane`; kill via `close_*_pane` fallback close tab; clear sessions on `PaneClosed`.
-- [x] **UI rendering**: build View with Workspaces/Sessions/Agents using built-in components; render status/hints; highlight selections.
-- [ ] **Agent form flow**: add/edit/delete agents (form parsing for command/env/note); persist immediately and refresh UI.
-- [ ] **New session wizard**: workspace prompt -> agent select/create; create inline agent path; trigger launch on completion.
-- [ ] **Error/status handling**: bubble backend errors to status line; keep state intact on failure; retries consistent.
-- [ ] **Tests**: unit tests for persistence parsing, event-to-state reconciliation, command construction (titles/env), UI logic helpers.
-- [ ] **Packaging/docs**: build instructions, layout usage, version pin (v0.43.1), update README/specs as work completes.
+## Next actions (do in order)
+- [ ] Implement the View/NewSession/AgentForm state machine: drive transitions per spec (workspace prompt -> agent select/create; agent add/edit/delete with confirmations), keep state when errors occur.
+- [ ] Agent CRUD + persistence: parse command/env/note inputs, validate (unique name, non-empty command), call `save_agents` on add/edit/delete, and reload list immediately.
+- [ ] New session wizard + launch: workspace prompt defaulting to caller cwd, agent pick/create inline, build command with env, set cwd/title context, call `open_command_pane`, and stash session entry.
+- [ ] Session actions: hook Enter to focus and `x` to kill selected session, handle `CommandPaneExited`/`CommandPaneReRun`/`PaneClosed` to update status, and fall back to tab-name focus/close when pane_id is missing.
+- [ ] Resync robustness: reconcile sessions on `TabUpdate`/`PaneUpdate` deltas, drop stale entries, repair workspace list, and add optional `list_clients` repair path if drift is detected.
+- [ ] Permissions + config path polish: confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
+- [ ] Tests: cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and session reconciliation.
+- [ ] Docs: refresh README/spec to describe controls, config path, build/reload steps, and current limitations once the prototype works.
+
+## Done
+- [x] Wire input handling and selections: subscribe to key events (arrows, Tab, Enter, Esc, n/a/e/d/x) to move between sections, change selected items, and surface key hints in the status line.
+- [x] Rust plugin scaffold targeting `wasm32-wasi` with dev layout for hot reload.
+- [x] Permissions/request flow: request needed permissions at load and show basic denied/pending messaging.
+- [x] Agent persistence layer: read/write `~/.config/maestro/agents.toml` with validation and atomic replace.
+- [x] Initial state model & basic resync: track sessions/workspaces/agents; subscribe to core events.
+- [x] Launch pipeline: `open_command_pane` with unique tab title and env injected via argv; capture `pane_id`.
+- [x] Focus/kill helpers: focus by tab name with pane fallback; close terminal pane when a pane_id is known.
+- [x] Baseline UI rendering: tables for workspaces/sessions and ribbon for agents with status line.
