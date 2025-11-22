@@ -48,13 +48,16 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
 - Bookkeeping: `hide_self`/`show_self` only if we choose to temporarily hide.
 
 ## UI/UX
-- Single pane UI using built-in components (Table/NestedList/Text).
-- Sections: Tabs (with agent pane counts), Agent Panes (filtered by selected tab), Agents.
+- Single pane UI using built-in components (Table/Text).
+- Tabbed sections: "Maestro" (running agent panes) and "Agents" (agent management).
+  - Tab key switches between sections.
+  - "Maestro" section: Shows all running agent panes with type-down filtering (press 'f' to enter filter mode, type to filter by agent name or tab, Esc to exit filter). Navigate with arrows, Enter to focus, 'x' to kill, 'n' to create new agent pane.
+  - "Agents" section: Shows agent management table (Agent, Command, Note columns). Navigate with arrows, Enter or 'e' to edit, 'd' to delete, 'n' or 'a' to create new agent. Empty notes display "—" placeholder.
 - Modes:
-  - View: navigate with arrows, Tab to switch section, Enter to focus agent pane, `x` to kill, `n` new agent pane, `a` add agent, `e` edit agent, `d` delete agent.
+  - View: navigate with arrows, Tab to switch section, Enter to focus agent pane (Maestro) or edit agent (Agents), `x` to kill agent pane (Maestro), `f` to filter (Maestro), `n` new agent pane (Maestro) or new agent (Agents), `e` edit agent (Agents), `d` delete agent (Agents), `a` switch to Agents section or create agent (Agents).
   - New Agent Pane wizard: prompt workspace path (optional, for CWD), then tab selection, then agent select or create inline.
   - Agent form: name, command (space-split), env (KEY=VAL, comma-separated), note (optional).
-- Status line for errors/info; concise key hints.
+- Status line for errors/info; concise key hints per section.
 
 ## Behavior details
 - **Launch**: Resolve workspace path (optional, for CWD); pick tab (existing or create new); pick agent; call `open_command_pane` with env baked into argv and unique title (`maestro:<agent>:<basename>:<uuid>`); record tab name; when `CommandPaneOpened`/`PaneUpdate` arrives, stash pane id.
@@ -101,12 +104,18 @@ This replaces the Go app entirely. It is a Zellij-only plugin (Rust `zellij-tile
             | enter advance/save -> Launch -> View
             | esc -> NewPaneAgentSelect
 
-From View:
-- a -> AgentForm (isNew) -> enter advances/save -> View; esc -> View
-- e -> AgentForm (edit)  -> enter advances/save -> View; esc -> View
-- d -> DeleteConfirm -> y delete -> View; n/esc -> View
+From View (Maestro section):
+- f -> Filter mode -> type to filter, Esc to exit -> View
 - enter on agent pane -> Focus -> View
 - x on agent pane -> Kill -> View
+- n -> NewPaneWorkspace -> ... -> View
+- a -> switch to Agents section
+
+From View (Agents section):
+- enter/e on agent -> AgentFormEdit -> enter advances/save -> View; esc -> View
+- d on agent -> DeleteConfirm -> y delete -> View; n/esc -> View
+- n/a -> AgentFormCreate -> enter advances/save -> View; esc -> View
+- Tab -> switch to Maestro section
 
 Notes:
 - Errors keep current state and surface status; retries stay local.

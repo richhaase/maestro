@@ -8,7 +8,7 @@ use zellij_tile::prelude::{
     BareKey, KeyModifier, KeyWithModifier, PaneId, PaneManifest, PermissionStatus, TabInfo,
 };
 use zellij_tile::prelude::*;
-use zellij_tile::ui_components::{serialize_ribbon_line, Table, Text};
+use zellij_tile::ui_components::{Table, Text};
 
 mod agents;
 
@@ -60,6 +60,22 @@ impl Default for Section {
     }
 }
 
+impl Section {
+    fn next(self) -> Self {
+        match self {
+            Section::AgentPanes => Section::Agents,
+            Section::Agents => Section::AgentPanes,
+        }
+    }
+    
+    fn label(self) -> &'static str {
+        match self {
+            Section::AgentPanes => "Maestro",
+            Section::Agents => "Agents",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     View,
@@ -106,7 +122,9 @@ pub struct Model {
     pub selected_agent: usize,
     pub focused_section: Section,
     pub filter_text: String, // Type-down filter for agent name or tab name
+    pub filter_active: bool, // Whether filter input mode is active
     pub mode: Mode,
+    pub agent_form_source: Option<Mode>, // Track where agent form came from (AgentManagement vs NewPaneAgentCreate)
     pub workspace_input: String,
     pub wizard_tab_idx: usize,
     pub agent_name_input: String,
@@ -476,6 +494,7 @@ impl Model {
 
     fn start_agent_create(&mut self) {
         self.mode = Mode::AgentFormCreate;
+        self.agent_form_source = Some(Mode::View); // Track that we came from Agents section
         self.agent_name_input.clear();
         self.agent_command_input.clear();
         self.agent_env_input.clear();
@@ -507,6 +526,7 @@ impl Model {
             self.agent_note_input = agent.note.clone().unwrap_or_default();
             self.agent_form_field = AgentFormField::Name;
             self.form_target_agent = Some(idx);
+            self.agent_form_source = Some(Mode::View); // Track that we came from Agents section
             self.mode = Mode::AgentFormEdit;
             self.reset_status();
         }
@@ -541,7 +561,7 @@ impl Model {
             workspace_basename(&workspace_path),
             Uuid::new_v4()
         );
-        let (tab_target, is_new_tab) = match tab_choice {
+        let (tab_target, _is_new_tab) = match tab_choice {
             TabChoice::Existing(name) => (name, false),
             TabChoice::New => {
                 let name = workspace_tab_name(&workspace_path);
@@ -717,22 +737,9 @@ impl Model {
         self.status_message.clear();
         self.error_message.clear();
     }
-
+    
     fn focus_next_section(&mut self) {
-        self.focused_section = match self.focused_section {
-            Section::AgentPanes => Section::Agents,
-            Section::Agents => Section::AgentPanes,
-        };
-        self.status_message.clear();
-        self.error_message.clear();
-        self.clamp_selections();
-    }
-
-    fn focus_prev_section(&mut self) {
-        self.focused_section = match self.focused_section {
-            Section::AgentPanes => Section::Agents,
-            Section::Agents => Section::AgentPanes,
-        };
+        self.focused_section = self.focused_section.next();
         self.status_message.clear();
         self.error_message.clear();
         self.clamp_selections();
@@ -751,10 +758,8 @@ impl Model {
     }
 
     fn handle_key_event_view(&mut self, key: KeyWithModifier) {
-        let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
-        
-        // If focused on AgentPanes, handle filter input
-        if self.focused_section == Section::AgentPanes {
+        // If filter is active, handle filter input
+        if self.filter_active {
             match key.bare_key {
                 BareKey::Char(c) => {
                     // Add character to filter
@@ -770,8 +775,9 @@ impl Model {
                     self.clamp_selections();
                     return;
                 }
-                BareKey::Esc if !self.filter_text.is_empty() => {
-                    // Clear filter on Esc (only if filter is active)
+                BareKey::Esc => {
+                    // Exit filter mode and clear filter
+                    self.filter_active = false;
                     self.filter_text.clear();
                     self.selected_pane = 0;
                     self.clamp_selections();
@@ -784,24 +790,33 @@ impl Model {
         match key.bare_key {
             BareKey::Up => self.move_selection(self.focused_section, -1),
             BareKey::Down => self.move_selection(self.focused_section, 1),
-            BareKey::Left => self.focus_prev_section(),
-            BareKey::Right => self.focus_next_section(),
-            BareKey::Tab if shift_tab => self.focus_prev_section(),
-            BareKey::Tab => self.focus_next_section(),
+            BareKey::Tab => {
+                self.focus_next_section();
+            }
             BareKey::Enter => {
-                if self.focused_section == Section::AgentPanes {
-                    let idx = self.selected_pane;
-                    self.focus_selected(idx);
+                match self.focused_section {
+                    Section::AgentPanes => {
+                        let idx = self.selected_pane;
+                        self.focus_selected(idx);
+                    }
+                    Section::Agents => {
+                        // Edit selected agent
+                        if self.selected_agent < self.agents.len() {
+                            self.start_agent_edit();
+                        }
+                    }
                 }
             }
             BareKey::Esc => {
-                // If filter is active, clear it first; otherwise close plugin
-                if !self.filter_text.is_empty() {
+                close_self();
+            }
+            BareKey::Char('f') | BareKey::Char('F') => {
+                // Enter filter mode (only for AgentPanes)
+                if self.focused_section == Section::AgentPanes {
+                    self.filter_active = true;
                     self.filter_text.clear();
                     self.selected_pane = 0;
                     self.clamp_selections();
-                } else {
-                    close_self();
                 }
             }
             BareKey::Char('x') | BareKey::Char('X') => {
@@ -810,17 +825,39 @@ impl Model {
                     self.kill_selected(idx);
                 }
             }
-            BareKey::Char('n') | BareKey::Char('N') => {
-                self.start_new_pane_workspace();
-            }
-            BareKey::Char('a') | BareKey::Char('A') => {
-                self.start_agent_create();
-            }
             BareKey::Char('e') | BareKey::Char('E') => {
-                self.start_agent_edit();
+                if self.focused_section == Section::Agents {
+                    // Edit selected agent
+                    if self.selected_agent < self.agents.len() {
+                        self.start_agent_edit();
+                    }
+                }
             }
             BareKey::Char('d') | BareKey::Char('D') => {
-                self.start_agent_delete_confirm();
+                if self.focused_section == Section::Agents {
+                    // Delete selected agent
+                    if self.selected_agent < self.agents.len() {
+                        self.start_agent_delete_confirm();
+                    }
+                }
+            }
+            BareKey::Char('n') | BareKey::Char('N') => {
+                if self.focused_section == Section::Agents {
+                    // Create new agent
+                    self.start_agent_create();
+                } else {
+                    self.start_new_pane_workspace();
+                }
+            }
+            BareKey::Char('a') | BareKey::Char('A') => {
+                if self.focused_section == Section::Agents {
+                    // Create new agent
+                    self.start_agent_create();
+                } else {
+                    // Switch to Agents section
+                    self.focused_section = Section::Agents;
+                    self.clamp_selections();
+                }
             }
             _ => {}
         }
@@ -895,6 +932,7 @@ impl Model {
                     }
                 } else {
                     self.mode = Mode::NewPaneAgentCreate;
+                    self.agent_form_source = Some(Mode::NewPaneAgentSelect); // Track that we came from wizard
                     self.agent_name_input.clear();
                     self.agent_command_input.clear();
                     self.agent_env_input.clear();
@@ -940,7 +978,14 @@ impl Model {
                                     self.spawn_agent_pane(workspace, agent.name.clone(), tab_choice);
                                 }
                                 if self.error_message.is_empty() {
-                                    self.view_preserve_messages();
+                                    // Return to View mode
+                                    if launch_after {
+                                        // If launching, we're in NewPaneAgentCreate - return to View
+                                        self.view_preserve_messages();
+                                    } else {
+                                        // Return to View mode (from Agents section)
+                                        self.view_preserve_messages();
+                                    }
                                 }
                             }
                             Err(err) => {
@@ -953,7 +998,11 @@ impl Model {
                     }
                 }
             }
-            BareKey::Esc => self.cancel_to_view(),
+            BareKey::Esc => {
+                // Return to View mode
+                self.agent_form_source = None;
+                self.cancel_to_view();
+            },
             _ => {}
         }
     }
@@ -977,9 +1026,13 @@ impl Model {
                         }
                     }
                 }
-                self.cancel_to_view();
+                // Return to View mode (delete confirm comes from Agents section)
+                self.mode = Mode::View;
             }
-            BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => self.cancel_to_view(),
+            BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => {
+                // Return to View mode
+                self.mode = Mode::View;
+            }
             _ => {}
         }
     }
@@ -1151,14 +1204,27 @@ impl ZellijPlugin for Maestro {
 
 fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
-    // Show filter input if in View mode and focused on AgentPanes
-    if model.mode == Mode::View && model.focused_section == Section::AgentPanes {
+    
+    // Render section tabs
+    out.push_str(&render_section_tabs(model, cols));
+    out.push('\n');
+    
+    // Show filter input if filter is active (only for AgentPanes section)
+    if model.filter_active && model.focused_section == Section::AgentPanes {
         out.push_str(&render_filter(model, cols));
         out.push('\n');
     }
-    out.push_str(&render_agent_panes(model, cols));
-    out.push('\n');
-    out.push_str(&render_agents(model, cols));
+    
+    // Render content based on focused section
+    match model.focused_section {
+        Section::AgentPanes => {
+            out.push_str(&render_agent_panes(model, cols));
+        }
+        Section::Agents => {
+            out.push_str(&render_agent_management(model, cols));
+        }
+    }
+    
     if let Some(overlay) = render_overlay(model, cols) {
         out.push('\n');
         out.push_str(&overlay);
@@ -1168,7 +1234,21 @@ fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out
 }
 
-fn render_filter(model: &Model, cols: usize) -> String {
+fn render_section_tabs(model: &Model, _cols: usize) -> String {
+    let mut tabs = Vec::new();
+    for section in [Section::AgentPanes, Section::Agents] {
+        let label = section.label();
+        let is_active = model.focused_section == section;
+        if is_active {
+            tabs.push(format!("> {}", label));
+        } else {
+            tabs.push(format!("  {}", label));
+        }
+    }
+    tabs.join("  ")
+}
+
+fn render_filter(model: &Model, _cols: usize) -> String {
     let filter_prompt = if model.filter_text.is_empty() {
         "Filter: (type to filter by agent name or tab)"
     } else {
@@ -1218,24 +1298,38 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
     serialize_table(&table)
 }
 
-fn render_agents(model: &Model, _cols: usize) -> String {
-    let ribbons: Vec<Text> = model
-        .agents
-        .iter()
-        .enumerate()
-        .map(|(idx, a)| {
-            let t = Text::new(&a.name);
-            if idx == model.selected_agent {
-                t.selected()
-            } else {
-                t
-            }
-        })
-        .collect();
-    if ribbons.is_empty() {
-        return "(no agents)".to_string();
+fn render_agent_management(model: &Model, cols: usize) -> String {
+    // Copy exact pattern from render_agent_panes which works correctly
+    let mut table = Table::new().add_row(vec!["Agent", "Command", "Note"]);
+    
+    for (idx, agent) in model.agents.iter().enumerate() {
+        // Match render_agent_panes pattern exactly - use references where possible
+        let name = if agent.name.is_empty() {
+            "(agent)"
+        } else {
+            &agent.name
+        };
+        let command = agent.command.join(" ");
+        // Ensure note always has content - use placeholder if empty to help table calculate column widths
+        let note = agent.note.as_ref()
+            .map(|n| n.as_str())
+            .filter(|n| !n.is_empty())
+            .unwrap_or("—"); // Use em-dash as placeholder for empty notes
+        // Match render_agent_panes: convert to String like it does
+        let row = vec![name.to_string(), command.to_string(), note.to_string()];
+        let styled = if idx == model.selected_agent {
+            row.into_iter().map(|c| Text::new(c).selected()).collect()
+        } else {
+            row.into_iter().map(Text::new).collect()
+        };
+        table = table.add_styled_row(styled);
     }
-    serialize_ribbon_line(ribbons)
+    
+    if model.agents.is_empty() {
+        table = table.add_row(vec!["(no agents)".to_string(), "".to_string(), "".to_string()]);
+    }
+    
+    serialize_table(&table)
 }
 
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
@@ -1343,10 +1437,13 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
 fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode {
         Mode::View => {
-            if model.focused_section == Section::AgentPanes {
-                "[Tab] switch • ↑/↓ move • type to filter • Enter focus • Esc clear filter • x kill • n new • a add • e edit • d delete"
+            if model.filter_active {
+                "Filter mode: type to filter • Esc exit filter"
             } else {
-                "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete"
+                match model.focused_section {
+                    Section::AgentPanes => "↑/↓ move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
+                    Section::Agents => "↑/↓ move • Tab switch section • Enter/e edit • d delete • n/a create • Esc close",
+                }
             }
         },
         Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
@@ -1645,21 +1742,17 @@ mod tests {
             },
         ];
 
-        model.selected_tab = 5;
         model.selected_pane = 5;
         model.selected_agent = 5;
         model.clamp_selections();
 
-        assert_eq!(model.selected_tab, 1);
-        assert_eq!(model.selected_pane, 0);
+        assert_eq!(model.selected_pane, 2); // Clamped to max (3 panes - 1)
         assert_eq!(model.selected_agent, 1);
 
-        model.move_selection(Section::Tabs, -1);
-        assert_eq!(model.selected_tab, 0);
-        model.move_selection(Section::AgentPanes, 5);
+        model.move_selection(Section::AgentPanes, -1);
         assert_eq!(model.selected_pane, 1);
-        model.move_selection(Section::Agents, 2);
-        assert_eq!(model.selected_agent, 1);
+        model.move_selection(Section::AgentPanes, 5);
+        assert_eq!(model.selected_pane, 2); // Clamped to max
     }
 
     #[test]
@@ -1691,11 +1784,6 @@ mod tests {
         }];
 
         model.handle_key_event(KeyWithModifier {
-            bare_key: BareKey::Tab,
-            key_modifiers: BTreeSet::new(),
-        });
-        assert_eq!(model.focused_section, Section::AgentPanes);
-        model.handle_key_event(KeyWithModifier {
             bare_key: BareKey::Down,
             key_modifiers: BTreeSet::new(),
         });
@@ -1704,6 +1792,7 @@ mod tests {
             bare_key: BareKey::Esc,
             key_modifiers: BTreeSet::new(),
         });
-        assert_eq!(model.focused_section, Section::Tabs);
+        // Esc closes plugin, so mode should be View (default)
+        assert_eq!(model.mode, Mode::View);
     }
 }
