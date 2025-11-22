@@ -6,7 +6,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 - [x] **Permissions/request flow**: request `ReadApplicationState`, `ChangeApplicationState`, `RunCommands`/`OpenTerminalsOrPlugins` (as needed) at load; handle denial UX.
 - [x] **Agent persistence layer**: read/write `~/.config/maestro/agents.{json|toml}` (via `/host`) with validation (unique name, command non-empty); resolve concurrency (last-write wins + simple guard).
 - [x] **State model & resync**: in-memory maps for workspaces/sessions; subscribe to `TabUpdate`/`PaneUpdate`/`SessionUpdate`/`CommandPane*`/`PaneClosed`; reconcile on each event; optional `list_clients` repair path.
-- [ ] **Launch pipeline**: implement `open_command_pane` (or `open_terminal`) with unique tab title (add UUID) and env injected via argv (`KEY=VAL cmd ...`); capture `pane_id`; track session identity.
+- [x] **Launch pipeline**: implement `open_command_pane` (or `open_terminal`) with unique tab title (add UUID) and env injected via argv (`KEY=VAL cmd ...`); capture `pane_id`; track session identity.
 - [ ] **Focus/Kill actions**: focus via `go_to_tab_name` fallback `focus_*_pane`; kill via `close_*_pane` fallback close tab; clear sessions on `PaneClosed`.
 - [ ] **UI rendering**: build View with Workspaces/Sessions/Agents using built-in components; render status/hints; highlight selections.
 - [ ] **Agent form flow**: add/edit/delete agents (form parsing for command/env/note); persist immediately and refresh UI.

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use zellij_tile::prelude::{PaneId, PaneManifest, PermissionStatus, TabInfo};
 use zellij_tile::prelude::*;
 
@@ -150,6 +151,8 @@ pub struct Model {
     pub agents: Vec<Agent>,
     pub sessions: Vec<Session>,
     pub workspaces: Vec<Workspace>,
+    pub status_message: String,
+    pub error_message: String,
 }
 
 impl Model {
@@ -164,6 +167,47 @@ impl Model {
                 self.permissions_denied = true;
             }
         }
+    }
+
+    pub fn spawn_session(&mut self, workspace_path: String, agent_name: String) {
+        if !self.permissions_granted {
+            self.error_message = "permissions not granted".to_string();
+            return;
+        }
+        let agent = match self.agents.iter().find(|a| a.name == agent_name) {
+            Some(a) => a.clone(),
+            None => {
+                self.error_message = "agent not found".to_string();
+                return;
+            }
+        };
+        let title = format!(
+            "maestro:{}:{}:{}",
+            agent.name,
+            workspace_basename(&workspace_path),
+            Uuid::new_v4()
+        );
+        let cmd = build_command_with_env(&agent);
+        let mut ctx = BTreeMap::new();
+        ctx.insert("pane_title".to_string(), title.clone());
+        if !workspace_path.is_empty() {
+            ctx.insert("cwd".to_string(), workspace_path.clone());
+        }
+        ctx.insert("agent".to_string(), agent.name.clone());
+
+        // Fire and forget; pane_id arrives via events.
+        open_command_pane(CommandToRun::new(cmd.join(" ")), ctx);
+
+        self.sessions.push(Session {
+            tab_name: title,
+            pane_id: None,
+            workspace_path,
+            agent_name,
+            status: SessionStatus::Running,
+        });
+        self.rebuild_workspaces();
+        self.error_message.clear();
+        self.status_message = "Session launched".to_string();
     }
 
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
@@ -309,10 +353,44 @@ mod tests {
             pane_id: Some(5),
             workspace_path: "/tmp/ws".to_string(),
             agent_name: "a".to_string(),
+            status: SessionStatus::Running,
         });
         model.handle_pane_closed(5);
         assert!(model.sessions.is_empty());
     }
+
+    #[test]
+    fn spawn_session_builds_title_and_context() {
+        let mut model = Model {
+            permissions_granted: true,
+            ..Default::default()
+        };
+        model.agents.push(Agent {
+            name: "codex".to_string(),
+            command: vec!["echo".to_string(), "hi".to_string()],
+            env: None,
+            note: None,
+        });
+        model.spawn_session("/tmp/ws".to_string(), "codex".to_string());
+        assert_eq!(model.sessions.len(), 1);
+        assert!(model.sessions[0].tab_name.starts_with("maestro:codex:ws"));
+        assert_eq!(model.sessions[0].workspace_path, "/tmp/ws");
+    }
 }
 
 register_plugin!(Maestro);
+
+fn build_command_with_env(agent: &Agent) -> Vec<String> {
+    let mut parts = Vec::new();
+    if let Some(env) = &agent.env {
+        for (k, v) in env {
+            parts.push(format!("{}={}", k, v));
+        }
+    }
+    parts.extend(agent.command.clone());
+    parts
+}
+
+fn workspace_basename(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_string()
+}
