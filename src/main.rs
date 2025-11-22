@@ -8,7 +8,7 @@ use zellij_tile::prelude::{
     BareKey, KeyModifier, KeyWithModifier, PaneId, PaneManifest, PermissionStatus, TabInfo,
 };
 use zellij_tile::prelude::*;
-use zellij_tile::ui_components::{Table, Text};
+use zellij_tile::ui_components::{serialize_ribbon_line, Table, Text};
 
 mod agents;
 
@@ -125,6 +125,7 @@ pub struct Model {
     pub filter_active: bool, // Whether filter input mode is active
     pub mode: Mode,
     pub agent_form_source: Option<Mode>, // Track where agent form came from (AgentManagement vs NewPaneAgentCreate)
+    pub quick_launch_agent_name: Option<String>, // Agent name for quick launch from Agents section
     pub workspace_input: String,
     pub wizard_tab_idx: usize,
     pub agent_name_input: String,
@@ -476,6 +477,7 @@ impl Model {
 
     fn cancel_to_view(&mut self) {
         self.mode = Mode::View;
+        self.quick_launch_agent_name = None; // Clear quick launch state on cancel
         self.reset_status();
     }
 
@@ -485,6 +487,7 @@ impl Model {
 
     fn start_new_pane_workspace(&mut self) {
         // Default to empty path - user can type or use tab to skip
+        // If quick_launch_agent_name is set, we're doing a quick launch (don't clear it)
         self.workspace_input.clear();
         self.mode = Mode::NewPaneWorkspace;
         self.wizard_agent_idx = 0;
@@ -859,8 +862,12 @@ impl Model {
             }
             BareKey::Char('n') | BareKey::Char('N') => {
                 if self.focused_section == Section::Agents {
-                    // Create new agent
-                    self.start_agent_create();
+                    // Launch selected agent (quick launch)
+                    if self.selected_agent < self.agents.len() {
+                        let agent_name = self.agents[self.selected_agent].name.clone();
+                        self.quick_launch_agent_name = Some(agent_name);
+                        self.start_new_pane_workspace();
+                    }
                 } else {
                     self.start_new_pane_workspace();
                 }
@@ -915,8 +922,18 @@ impl Model {
                 }
             }
             BareKey::Enter => {
-                self.mode = Mode::NewPaneAgentSelect;
-                self.wizard_agent_idx = 0;
+                // If quick launch agent is set, skip agent selection and launch directly
+                if let Some(agent_name) = self.quick_launch_agent_name.take() {
+                    let workspace = self.workspace_input.trim().to_string();
+                    let tab_choice = selected_tab_choice(self);
+                    self.spawn_agent_pane(workspace, agent_name, tab_choice);
+                    if self.error_message.is_empty() {
+                        self.view_preserve_messages();
+                    }
+                } else {
+                    self.mode = Mode::NewPaneAgentSelect;
+                    self.wizard_agent_idx = 0;
+                }
             }
             BareKey::Esc => self.cancel_to_view(),
             BareKey::Tab => self.cancel_to_view(),
@@ -1251,17 +1268,18 @@ fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
 }
 
 fn render_section_tabs(model: &Model, _cols: usize) -> String {
-    let mut tabs = Vec::new();
+    let mut ribbon_items = Vec::new();
     for section in [Section::AgentPanes, Section::Agents] {
         let label = section.label();
         let is_active = model.focused_section == section;
-        if is_active {
-            tabs.push(format!("> {}", label));
+        let text = if is_active {
+            Text::new(label).selected()
         } else {
-            tabs.push(format!("  {}", label));
-        }
+            Text::new(label)
+        };
+        ribbon_items.push(text);
     }
-    tabs.join("  ")
+    serialize_ribbon_line(ribbon_items)
 }
 
 fn render_filter(model: &Model, _cols: usize) -> String {
@@ -1287,9 +1305,11 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             .collect()
     };
     
-    let mut table = Table::new().add_row(vec!["Agent", "Status", "Tab"]);
+    // Column order: Tab, Agent, Status
+    let mut table = Table::new().add_row(vec!["Tab", "Agent", "Status"]);
     
     for (idx, pane) in panes.iter().enumerate() {
+        let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
         let agent = if pane.agent_name.is_empty() {
             "(agent)"
         } else {
@@ -1299,8 +1319,8 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             PaneStatus::Running => "RUNNING",
             PaneStatus::Exited(_) => "EXITED",
         };
-        let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
-        let row = vec![agent.to_string(), status.to_string(), tab];
+        // Column order: Tab, Agent, Status
+        let row = vec![tab, agent.to_string(), status.to_string()];
         let styled = if idx == model.selected_pane {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
         } else {
@@ -1309,6 +1329,7 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         table = table.add_styled_row(styled);
     }
     if panes.is_empty() {
+        // Column order: Tab, Agent, Status
         table = table.add_row(vec!["(no agent panes)".to_string(), "".to_string(), "".to_string()]);
     }
     serialize_table(&table)
@@ -1458,7 +1479,7 @@ fn render_status(model: &Model, cols: usize) -> String {
             } else {
                 match model.focused_section {
                     Section::AgentPanes => "j/k move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
-                    Section::Agents => "j/k move • Tab switch section • Enter/e edit • d delete • n/a create • Esc close",
+                    Section::Agents => "j/k move • Tab switch section • Enter/e edit • d delete • n launch • a create • Esc close",
                 }
             }
         },
