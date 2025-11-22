@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zellij_tile::prelude::{PaneId, PaneManifest, PermissionStatus, TabInfo};
 use zellij_tile::prelude::*;
+use zellij_tile::ui_components::{serialize_ribbon_line, Table, Text};
 
 mod agents;
 
@@ -102,14 +103,8 @@ impl ZellijPlugin for Maestro {
             return;
         }
 
-        // Placeholder UI: claim the space to avoid blank pane warnings.
-        let text = format!(
-            "Maestro plugin initializing...\nViewport: {}x{}\n(To be implemented)\nSessions tracked: {}",
-            cols,
-            rows,
-            self.model.sessions.len()
-        );
-        print!("{}", text);
+        let ui = render_ui(&self.model, rows, cols);
+        print!("{}", ui);
     }
 }
 
@@ -153,6 +148,9 @@ pub struct Model {
     pub workspaces: Vec<Workspace>,
     pub status_message: String,
     pub error_message: String,
+    pub selected_workspace: usize,
+    pub selected_session: usize,
+    pub selected_agent: usize,
 }
 
 impl Model {
@@ -381,22 +379,38 @@ fn is_maestro_tab(title: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zellij_tile::prelude::{PaneId, PaneInfo, PaneManifest};
 
     #[test]
     fn pane_update_adds_session() {
         let mut model = Model::default();
-        let pane = Pane {
+        let pane = PaneInfo {
             id: 1,
             is_plugin: false,
             is_focused: false,
-            is_tiled: true,
-            is_stacked: false,
-            title: Some("maestro:test:ws:uuid".to_string()),
-            ..Default::default()
+            is_fullscreen: false,
+            is_floating: false,
+            is_suppressed: false,
+            title: "maestro:test:ws:uuid".to_string(),
+            exited: false,
+            exit_status: None,
+            is_held: false,
+            pane_x: 0,
+            pane_content_x: 0,
+            pane_y: 0,
+            pane_content_y: 0,
+            pane_rows: 1,
+            pane_content_rows: 1,
+            pane_columns: 1,
+            pane_content_columns: 1,
+            cursor_coordinates_in_pane: None,
+            terminal_command: None,
+            plugin_url: None,
+            is_selectable: true,
+            index_in_pane_group: Default::default(),
         };
-        model.apply_pane_update(PaneUpdate {
-            panes: vec![pane],
-            ..Default::default()
+        model.apply_pane_update(PaneManifest {
+            panes: [(0_usize, vec![pane])].into_iter().collect(),
         });
         assert_eq!(model.sessions.len(), 1);
         assert_eq!(model.sessions[0].pane_id, Some(1));
@@ -412,7 +426,7 @@ mod tests {
             agent_name: "a".to_string(),
             status: SessionStatus::Running,
         });
-        model.handle_pane_closed(5);
+        model.handle_pane_closed(PaneId::Terminal(5));
         assert!(model.sessions.is_empty());
     }
 
@@ -433,6 +447,12 @@ mod tests {
         assert!(model.sessions[0].tab_name.starts_with("maestro:codex:ws"));
         assert_eq!(model.sessions[0].workspace_path, "/tmp/ws");
     }
+
+    #[test]
+    fn truncate_shortens_strings() {
+        assert_eq!(truncate("hello", 3), "hel…");
+        assert_eq!(truncate("hi", 10), "hi");
+    }
 }
 
 register_plugin!(Maestro);
@@ -450,4 +470,131 @@ fn build_command_with_env(agent: &Agent) -> Vec<String> {
 
 fn workspace_basename(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
+fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
+    let mut out = String::new();
+
+    out.push_str(&render_workspaces(model, cols));
+    out.push('\n');
+    out.push_str(&render_sessions(model, cols));
+    out.push('\n');
+    out.push_str(&render_agents(model, cols));
+    out.push('\n');
+    out.push_str(&render_status(model, cols));
+
+    out
+}
+
+fn render_workspaces(model: &Model, cols: usize) -> String {
+    let mut table = Table::new().add_row(vec!["Workspace", "Sessions"]);
+    for (idx, ws) in model.workspaces.iter().enumerate() {
+        let name = truncate(&ws.name, cols.saturating_sub(10));
+        let count = model
+            .sessions
+            .iter()
+            .filter(|s| s.workspace_path == ws.path)
+            .count()
+            .to_string();
+        let row = vec![name, count];
+        let styled = if idx == model.selected_workspace {
+            row.into_iter().map(|c| Text::new(c).selected()).collect()
+        } else {
+            row.into_iter().map(Text::new).collect()
+        };
+        table = table.add_styled_row(styled);
+    }
+    if model.workspaces.is_empty() {
+        table = table.add_row(vec!["(no workspaces)", ""]);
+    }
+    serialize_table(&table)
+}
+
+fn render_sessions(model: &Model, cols: usize) -> String {
+    let mut table = Table::new().add_row(vec!["Agent", "Status", "Tab"]);
+    let sessions = filtered_sessions(model);
+    for (idx, sess) in sessions.iter().enumerate() {
+        let agent = if sess.agent_name.is_empty() {
+            "(agent)"
+        } else {
+            &sess.agent_name
+        };
+        let status = match sess.status {
+            SessionStatus::Running => "RUNNING",
+            SessionStatus::Exited(_) => "EXITED",
+        };
+        let tab = truncate(&sess.tab_name, cols.saturating_sub(20));
+        let row = vec![agent.to_string(), status.to_string(), tab];
+        let styled = if idx == model.selected_session {
+            row.into_iter().map(|c| Text::new(c).selected()).collect()
+        } else {
+            row.into_iter().map(Text::new).collect()
+        };
+        table = table.add_styled_row(styled);
+    }
+    if sessions.is_empty() {
+        table = table.add_row(vec!["(no sessions)", "", ""]);
+    }
+    serialize_table(&table)
+}
+
+fn render_agents(model: &Model, _cols: usize) -> String {
+    let ribbons: Vec<Text> = model
+        .agents
+        .iter()
+        .enumerate()
+        .map(|(idx, a)| {
+            let t = Text::new(&a.name);
+            if idx == model.selected_agent {
+                t.selected()
+            } else {
+                t
+            }
+        })
+        .collect();
+    if ribbons.is_empty() {
+        return "(no agents)".to_string();
+    }
+    serialize_ribbon_line(ribbons)
+}
+
+fn render_status(model: &Model, cols: usize) -> String {
+    let msg = if !model.error_message.is_empty() {
+        format!("ERROR: {}", model.error_message)
+    } else {
+        model.status_message.clone()
+    };
+    truncate(&msg, cols)
+}
+
+fn filtered_sessions(model: &Model) -> Vec<Session> {
+    if model.workspaces.is_empty() {
+        return model.sessions.clone();
+    }
+    let ws_idx = model.selected_workspace.min(model.workspaces.len().saturating_sub(1));
+    let ws_path = model.workspaces.get(ws_idx).map(|w| w.path.clone());
+    match ws_path {
+        Some(path) => model
+            .sessions
+            .iter()
+            .filter(|s| s.workspace_path == path)
+            .cloned()
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i >= max {
+            out.push('…');
+            break;
+        }
+        out.push(ch);
+    }
+    out
 }
