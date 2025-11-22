@@ -391,7 +391,11 @@ impl Model {
         });
         self.rebuild_workspaces();
         self.error_message.clear();
-        self.status_message = "Session launched".to_string();
+        if self.status_message.is_empty() {
+            self.status_message = "Session launched".to_string();
+        } else {
+            self.status_message = format!("{}; Session launched", self.status_message);
+        }
     }
 
     pub fn focus_selected(&mut self, selected_idx: usize) {
@@ -671,10 +675,11 @@ impl Model {
                             Mode::AgentFormCreate | Mode::NewSessionAgentCreate => {
                                 self.apply_agent_create(agent.clone())
                             }
-                            _ => Ok(()),
+                            _ => Err("invalid mode".to_string()),
                         };
                         match result {
-                            Ok(()) => {
+                            Ok(saved_path) => {
+                                self.status_message = format!("Agents saved to {}", saved_path.display());
                                 if launch_after {
                                     let workspace = self.workspace_input.trim().to_string();
                                     let tab_choice = selected_tab_choice(self);
@@ -706,7 +711,16 @@ impl Model {
                     if idx < self.agents.len() {
                         self.agents.remove(idx);
                         self.selected_agent = self.selected_agent.min(self.agents.len().saturating_sub(1));
-                        self.status_message = "Agent deleted".to_string();
+                        match self.persist_agents() {
+                            Ok(path) => {
+                                self.status_message =
+                                    format!("Agent deleted and saved to {}", path.display());
+                                self.error_message.clear();
+                            }
+                            Err(err) => {
+                                self.error_message = err;
+                            }
+                        }
                     }
                 }
                 self.cancel_to_view();
@@ -716,18 +730,16 @@ impl Model {
         }
     }
 
-    fn apply_agent_create(&mut self, agent: Agent) -> Result<(), String> {
+    fn apply_agent_create(&mut self, agent: Agent) -> Result<PathBuf, String> {
         if self.agents.iter().any(|a| a.name == agent.name) {
             return Err("duplicate agent name".to_string());
         }
         self.agents.push(agent);
         self.selected_agent = self.agents.len().saturating_sub(1);
-        self.status_message = "Agent added (not yet persisted)".to_string();
-        self.error_message.clear();
-        Ok(())
+        self.persist_agents()
     }
 
-    fn apply_agent_edit(&mut self, agent: Agent) -> Result<(), String> {
+    fn apply_agent_edit(&mut self, agent: Agent) -> Result<PathBuf, String> {
         if let Some(idx) = self.form_target_agent {
             if idx < self.agents.len() {
                 if self
@@ -740,9 +752,7 @@ impl Model {
                 }
                 self.agents[idx] = agent;
                 self.selected_agent = idx;
-                self.status_message = "Agent updated (not yet persisted)".to_string();
-                self.error_message.clear();
-                return Ok(());
+                return self.persist_agents();
             }
         }
         Err("no agent selected".to_string())
@@ -773,6 +783,20 @@ impl Model {
             env,
             note,
         })
+    }
+
+    fn persist_agents(&mut self) -> Result<PathBuf, String> {
+        let path = agents::config_path().map_err(|e| format!("config path: {e}"))?;
+        agents::save_agents(&self.agents).map_err(|e| format!("save agents: {e}"))?;
+        match agents::load_agents() {
+            Ok(list) => {
+                self.agents = list;
+                self.clamp_selections();
+                self.error_message.clear();
+                Ok(path)
+            }
+            Err(err) => Err(format!("reload agents: {err}")),
+        }
     }
 }
 
