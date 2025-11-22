@@ -762,10 +762,20 @@ impl Model {
         if self.filter_active {
             match key.bare_key {
                 BareKey::Char(c) => {
-                    // Add character to filter
+                    // In filter mode, j/k are intercepted and added to filter text
                     self.filter_text.push(c);
                     self.selected_pane = 0; // Reset selection when filter changes
                     self.clamp_selections();
+                    return;
+                }
+                BareKey::Up => {
+                    // Arrow keys work for movement in filter mode
+                    self.move_selection(self.focused_section, -1);
+                    return;
+                }
+                BareKey::Down => {
+                    // Arrow keys work for movement in filter mode
+                    self.move_selection(self.focused_section, 1);
                     return;
                 }
                 BareKey::Backspace => {
@@ -788,8 +798,14 @@ impl Model {
         }
         
         match key.bare_key {
-            BareKey::Up => self.move_selection(self.focused_section, -1),
-            BareKey::Down => self.move_selection(self.focused_section, 1),
+            BareKey::Char('j') | BareKey::Char('J') => {
+                // j/k work for movement in normal mode (not filter mode)
+                self.move_selection(self.focused_section, 1);
+            }
+            BareKey::Char('k') | BareKey::Char('K') => {
+                // j/k work for movement in normal mode (not filter mode)
+                self.move_selection(self.focused_section, -1);
+            }
             BareKey::Tab => {
                 self.focus_next_section();
             }
@@ -888,12 +904,12 @@ impl Model {
     fn handle_key_event_new_pane_tab_select(&mut self, key: KeyWithModifier) {
         let choices = self.tab_names.len().saturating_add(1);
         match key.bare_key {
-            BareKey::Up => {
+            BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
                 if self.wizard_tab_idx > 0 {
                     self.wizard_tab_idx -= 1;
                 }
             }
-            BareKey::Down => {
+            BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
                 if self.wizard_tab_idx + 1 < choices {
                     self.wizard_tab_idx += 1;
                 }
@@ -911,12 +927,12 @@ impl Model {
     fn handle_key_event_new_pane_agent_select(&mut self, key: KeyWithModifier) {
         let choices = self.agents.len().saturating_add(1);
         match key.bare_key {
-            BareKey::Up => {
+            BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
                 if self.wizard_agent_idx > 0 {
                     self.wizard_agent_idx -= 1;
                 }
             }
-            BareKey::Down => {
+            BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
                 if self.wizard_agent_idx + 1 < choices {
                     self.wizard_agent_idx += 1;
                 }
@@ -1438,17 +1454,17 @@ fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode {
         Mode::View => {
             if model.filter_active {
-                "Filter mode: type to filter • Esc exit filter"
+                "Filter mode: type to filter • ↑/↓ move • Esc exit filter"
             } else {
                 match model.focused_section {
-                    Section::AgentPanes => "↑/↓ move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
-                    Section::Agents => "↑/↓ move • Tab switch section • Enter/e edit • d delete • n/a create • Esc close",
+                    Section::AgentPanes => "j/k move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
+                    Section::Agents => "j/k move • Tab switch section • Enter/e edit • d delete • n/a create • Esc close",
                 }
             }
         },
         Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
-        Mode::NewPaneTabSelect => "[↑/↓] choose tab • Enter confirm • Esc cancel",
-        Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
+        Mode::NewPaneTabSelect => "[j/k or ↑/↓] choose tab • Enter confirm • Esc cancel",
+        Mode::NewPaneAgentSelect => "[j/k or ↑/↓] choose • Enter select/create • Esc cancel",
         Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
@@ -1784,7 +1800,7 @@ mod tests {
         }];
 
         model.handle_key_event(KeyWithModifier {
-            bare_key: BareKey::Down,
+            bare_key: BareKey::Char('j'),
             key_modifiers: BTreeSet::new(),
         });
         assert_eq!(model.selected_pane, 1);
