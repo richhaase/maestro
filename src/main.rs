@@ -599,18 +599,22 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        let panes = filtered_panes(self);
-        if selected_idx >= panes.len() {
+        // Use the same list as render_agent_panes (all panes) to ensure indices match
+        if selected_idx >= self.agent_panes.len() {
             self.error_message = "no agent panes".to_string();
             return;
         }
-        let pane = &panes[selected_idx];
+        let pane = &self.agent_panes[selected_idx];
         go_to_tab_name(&pane.tab_name);
         if let Some(pid) = pane.pane_id {
             focus_terminal_pane(pid, false);
+            self.error_message.clear();
+            self.status_message = "Focused agent pane".to_string();
+        } else {
+            // If pane_id is None, we can't focus a specific pane
+            // Just switching to the tab is the best we can do
+            self.error_message = "Pane ID not available yet".to_string();
         }
-        self.error_message.clear();
-        self.status_message = "Focused agent pane".to_string();
     }
 
     pub fn kill_selected(&mut self, selected_idx: usize) {
@@ -644,7 +648,8 @@ impl Model {
             self.selected_tab = tab_len.saturating_sub(1);
         }
 
-        let pane_len = filtered_panes(self).len();
+        // Clamp selected_pane to all panes (not filtered) since we show all panes in the UI
+        let pane_len = self.agent_panes.len();
         if pane_len == 0 {
             self.selected_pane = 0;
         } else if self.selected_pane >= pane_len {
@@ -662,7 +667,7 @@ impl Model {
     fn move_selection(&mut self, section: Section, delta: isize) {
         let (len, current) = match section {
             Section::Tabs => (self.tab_names.len(), self.selected_tab),
-            Section::AgentPanes => (filtered_panes(self).len(), self.selected_pane),
+            Section::AgentPanes => (self.agent_panes.len(), self.selected_pane), // Use all panes, not filtered
             Section::Agents => (self.agents.len(), self.selected_agent),
         };
         if len == 0 {
@@ -1127,7 +1132,7 @@ fn render_tabs(model: &Model, cols: usize) -> String {
 
 fn render_agent_panes(model: &Model, cols: usize) -> String {
     let mut table = Table::new().add_row(vec!["Agent", "Status", "Tab"]);
-    // TEMPORARY: Show all panes to debug - remove filtering
+    // Show all panes, not filtered by tab
     let panes = &model.agent_panes;
     
     for (idx, pane) in panes.iter().enumerate() {
@@ -1151,9 +1156,6 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
     }
     if panes.is_empty() {
         table = table.add_row(vec!["(no agent panes)".to_string(), "".to_string(), "".to_string()]);
-    } else {
-        // TEMPORARY: Show count for debugging
-        table = table.add_row(vec![format!("({} total)", panes.len()), "".to_string(), "".to_string()]);
     }
     serialize_table(&table)
 }
