@@ -1315,16 +1315,23 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         } else {
             &pane.agent_name
         };
-        let (status_text, status_color_index) = match pane.status {
-            PaneStatus::Running => ("RUNNING", 2), // Green (index 2)
-            PaneStatus::Exited(_) => ("EXITED", 1), // Red (index 1)
+        let status_text = match pane.status {
+            PaneStatus::Running => "RUNNING",
+            PaneStatus::Exited(_) => "EXITED",
         };
         
         // Column order: Tab, Agent, Status
+        // Use color_all with index_level 0 for foreground color
+        // Zellij maps these to theme colors: 0=default, 1=red, 2=green, etc.
+        let status_color = match pane.status {
+            PaneStatus::Running => 2, // Green
+            PaneStatus::Exited(_) => 1, // Red
+        };
+        
         let mut row = vec![
             Text::new(tab),
             Text::new(agent.to_string()),
-            Text::new(status_text.to_string()).color_all(status_color_index),
+            Text::new(status_text.to_string()).color_all(status_color),
         ];
         
         // Apply selection highlighting to entire row if selected

@@ -23,6 +23,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 - [ ] **Duplicate/Restart Actions**: `r` key to restart selected agent pane, `d` key to duplicate agent pane (same agent, new pane), quick relaunch of exited panes.
 
 ### Infrastructure/Polish
+- [ ] **Fix status color mapping**: Research and fix color indices for RUNNING (currently neon green) and EXITED (currently teal) to match desired colors. The `index_level` parameter maps to Zellij's theme palette, need to find correct indices or alternative approach.
 - [ ] Permissions + config path polish: confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
 - [ ] Locate persisted agent files in practice (current `/host` maps to plugin launch CWD, yielding `./.config/maestro/agents.kdl`); document actual host path/mount and resolve path strategy.
 - [ ] Tests: cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and agent pane reconciliation.
