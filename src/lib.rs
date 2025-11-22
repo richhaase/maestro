@@ -210,6 +210,63 @@ impl Model {
         self.status_message = "Session launched".to_string();
     }
 
+    pub fn focus_selected(&mut self, selected_idx: usize) {
+        if !self.permissions_granted {
+            self.error_message = "permissions not granted".to_string();
+            return;
+        }
+        if selected_idx >= self.sessions.len() {
+            self.error_message = "no sessions".to_string();
+            return;
+        }
+        let sess = &self.sessions[selected_idx];
+        let mut focused = false;
+        if !sess.tab_name.is_empty() {
+            go_to_tab_name(&sess.tab_name);
+            focused = true;
+        }
+        if !focused {
+            if let Some(pid) = sess.pane_id {
+                focus_terminal_pane(pid, false);
+                focused = true;
+            }
+        }
+        if focused {
+            self.error_message.clear();
+            self.status_message = "Focused session".to_string();
+        } else {
+            self.error_message = "no valid target to focus".to_string();
+        }
+    }
+
+    pub fn kill_selected(&mut self, selected_idx: usize) {
+        if !self.permissions_granted {
+            self.error_message = "permissions not granted".to_string();
+            return;
+        }
+        if selected_idx >= self.sessions.len() {
+            self.error_message = "no sessions".to_string();
+            return;
+        }
+        let sess = self.sessions.get(selected_idx).cloned();
+        if let Some(sess) = sess {
+            let mut killed = false;
+            if let Some(pid) = sess.pane_id {
+                close_terminal_pane(pid);
+                killed = true;
+            }
+            if killed {
+                self.sessions
+                    .retain(|s| s.tab_name != sess.tab_name || s.pane_id != sess.pane_id);
+                self.rebuild_workspaces();
+                self.error_message.clear();
+                self.status_message = "Killed session".to_string();
+            } else {
+                self.error_message = "no valid target to kill".to_string();
+            }
+        }
+    }
+
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
         // Drop sessions whose tab no longer exists.
         let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
