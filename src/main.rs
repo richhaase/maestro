@@ -50,14 +50,13 @@ pub struct AgentPane {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
-    Tabs,
     AgentPanes,
     Agents,
 }
 
 impl Default for Section {
     fn default() -> Self {
-        Section::Tabs
+        Section::AgentPanes
     }
 }
 
@@ -106,6 +105,7 @@ pub struct Model {
     pub selected_pane: usize,
     pub selected_agent: usize,
     pub focused_section: Section,
+    pub filter_text: String, // Type-down filter for agent name or tab name
     pub mode: Mode,
     pub workspace_input: String,
     pub wizard_tab_idx: usize,
@@ -149,10 +149,6 @@ impl Model {
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
         let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
         self.tab_names = tab_names.clone();
-        // Update selected_tab if the current selection is out of bounds
-        if self.selected_tab >= tab_names.len() {
-            self.selected_tab = tab_names.len().saturating_sub(1);
-        }
         // Remove panes whose tab no longer exists (unless they have a pane_id, meaning they're still active)
         // PaneUpdate will update tab_name for panes that still exist
         self.agent_panes
@@ -557,13 +553,6 @@ impl Model {
             }
         };
         go_to_tab_name(&tab_target);
-        // Update selected_tab to match the tab we just switched to
-        if let Some(idx) = self.tab_names.iter().position(|n| n == &tab_target) {
-            self.selected_tab = idx;
-        } else if is_new_tab {
-            // If it's a new tab, it should be at the end
-            self.selected_tab = self.tab_names.len().saturating_sub(1);
-        }
         let cmd = build_command_with_env(&agent);
         let mut ctx = BTreeMap::new();
         ctx.insert("pane_title".to_string(), title.clone());
@@ -599,12 +588,24 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        // Use the same list as render_agent_panes (all panes) to ensure indices match
-        if selected_idx >= self.agent_panes.len() {
+        // Get filtered panes (same logic as render_agent_panes) to ensure indices match
+        let filter_lower = self.filter_text.to_lowercase();
+        let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
+            self.agent_panes.iter().collect()
+        } else {
+            self.agent_panes.iter()
+                .filter(|p| {
+                    p.agent_name.to_lowercase().contains(&filter_lower) ||
+                    p.tab_name.to_lowercase().contains(&filter_lower)
+                })
+                .collect()
+        };
+        
+        if selected_idx >= panes.len() {
             self.error_message = "no agent panes".to_string();
             return;
         }
-        let pane = &self.agent_panes[selected_idx];
+        let pane = panes[selected_idx];
         go_to_tab_name(&pane.tab_name);
         if let Some(pid) = pane.pane_id {
             focus_terminal_pane(pid, false);
@@ -622,12 +623,24 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        let panes = filtered_panes(self);
+        // Get filtered panes (same logic as render_agent_panes) to ensure indices match
+        let filter_lower = self.filter_text.to_lowercase();
+        let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
+            self.agent_panes.iter().collect()
+        } else {
+            self.agent_panes.iter()
+                .filter(|p| {
+                    p.agent_name.to_lowercase().contains(&filter_lower) ||
+                    p.tab_name.to_lowercase().contains(&filter_lower)
+                })
+                .collect()
+        };
+        
         if selected_idx >= panes.len() {
             self.error_message = "no agent panes".to_string();
             return;
         }
-        let pane = &panes[selected_idx];
+        let pane = panes[selected_idx];
         if let Some(pid) = pane.pane_id {
             close_terminal_pane(pid);
             self.agent_panes
@@ -641,15 +654,18 @@ impl Model {
     }
 
     fn clamp_selections(&mut self) {
-        let tab_len = self.tab_names.len();
-        if tab_len == 0 {
-            self.selected_tab = 0;
-        } else if self.selected_tab >= tab_len {
-            self.selected_tab = tab_len.saturating_sub(1);
-        }
-
-        // Clamp selected_pane to all panes (not filtered) since we show all panes in the UI
-        let pane_len = self.agent_panes.len();
+        // Clamp selected_pane to filtered panes based on filter_text
+        let filter_lower = self.filter_text.to_lowercase();
+        let pane_len = if filter_lower.is_empty() {
+            self.agent_panes.len()
+        } else {
+            self.agent_panes.iter()
+                .filter(|p| {
+                    p.agent_name.to_lowercase().contains(&filter_lower) ||
+                    p.tab_name.to_lowercase().contains(&filter_lower)
+                })
+                .count()
+        };
         if pane_len == 0 {
             self.selected_pane = 0;
         } else if self.selected_pane >= pane_len {
@@ -666,8 +682,21 @@ impl Model {
 
     fn move_selection(&mut self, section: Section, delta: isize) {
         let (len, current) = match section {
-            Section::Tabs => (self.tab_names.len(), self.selected_tab),
-            Section::AgentPanes => (self.agent_panes.len(), self.selected_pane), // Use all panes, not filtered
+            Section::AgentPanes => {
+                // Use filtered panes length based on filter_text
+                let filter_lower = self.filter_text.to_lowercase();
+                let panes_len = if filter_lower.is_empty() {
+                    self.agent_panes.len()
+                } else {
+                    self.agent_panes.iter()
+                        .filter(|p| {
+                            p.agent_name.to_lowercase().contains(&filter_lower) ||
+                            p.tab_name.to_lowercase().contains(&filter_lower)
+                        })
+                        .count()
+                };
+                (panes_len, self.selected_pane)
+            },
             Section::Agents => (self.agents.len(), self.selected_agent),
         };
         if len == 0 {
@@ -682,12 +711,8 @@ impl Model {
         }
         let next = next as usize;
         match section {
-            Section::Tabs => self.selected_tab = next,
             Section::AgentPanes => self.selected_pane = next,
             Section::Agents => self.selected_agent = next,
-        }
-        if section == Section::Tabs {
-            self.clamp_selections();
         }
         self.status_message.clear();
         self.error_message.clear();
@@ -695,9 +720,8 @@ impl Model {
 
     fn focus_next_section(&mut self) {
         self.focused_section = match self.focused_section {
-            Section::Tabs => Section::AgentPanes,
             Section::AgentPanes => Section::Agents,
-            Section::Agents => Section::Tabs,
+            Section::Agents => Section::AgentPanes,
         };
         self.status_message.clear();
         self.error_message.clear();
@@ -706,8 +730,7 @@ impl Model {
 
     fn focus_prev_section(&mut self) {
         self.focused_section = match self.focused_section {
-            Section::Tabs => Section::Agents,
-            Section::AgentPanes => Section::Tabs,
+            Section::AgentPanes => Section::Agents,
             Section::Agents => Section::AgentPanes,
         };
         self.status_message.clear();
@@ -729,6 +752,35 @@ impl Model {
 
     fn handle_key_event_view(&mut self, key: KeyWithModifier) {
         let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
+        
+        // If focused on AgentPanes, handle filter input
+        if self.focused_section == Section::AgentPanes {
+            match key.bare_key {
+                BareKey::Char(c) => {
+                    // Add character to filter
+                    self.filter_text.push(c);
+                    self.selected_pane = 0; // Reset selection when filter changes
+                    self.clamp_selections();
+                    return;
+                }
+                BareKey::Backspace => {
+                    // Remove last character from filter
+                    self.filter_text.pop();
+                    self.selected_pane = 0; // Reset selection when filter changes
+                    self.clamp_selections();
+                    return;
+                }
+                BareKey::Esc if !self.filter_text.is_empty() => {
+                    // Clear filter on Esc (only if filter is active)
+                    self.filter_text.clear();
+                    self.selected_pane = 0;
+                    self.clamp_selections();
+                    return;
+                }
+                _ => {}
+            }
+        }
+        
         match key.bare_key {
             BareKey::Up => self.move_selection(self.focused_section, -1),
             BareKey::Down => self.move_selection(self.focused_section, 1),
@@ -743,7 +795,14 @@ impl Model {
                 }
             }
             BareKey::Esc => {
-                close_self();
+                // If filter is active, clear it first; otherwise close plugin
+                if !self.filter_text.is_empty() {
+                    self.filter_text.clear();
+                    self.selected_pane = 0;
+                    self.clamp_selections();
+                } else {
+                    close_self();
+                }
             }
             BareKey::Char('x') | BareKey::Char('X') => {
                 if self.focused_section == Section::AgentPanes {
@@ -1092,8 +1151,11 @@ impl ZellijPlugin for Maestro {
 
 fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
-    out.push_str(&render_tabs(model, cols));
-    out.push('\n');
+    // Show filter input if in View mode and focused on AgentPanes
+    if model.mode == Mode::View && model.focused_section == Section::AgentPanes {
+        out.push_str(&render_filter(model, cols));
+        out.push('\n');
+    }
     out.push_str(&render_agent_panes(model, cols));
     out.push('\n');
     out.push_str(&render_agents(model, cols));
@@ -1106,34 +1168,30 @@ fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out
 }
 
-fn render_tabs(model: &Model, cols: usize) -> String {
-    let mut table = Table::new().add_row(vec!["Tab", "Agent Panes"]);
-    for (idx, tab_name) in model.tab_names.iter().enumerate() {
-        let name = truncate(tab_name, cols.saturating_sub(10));
-        let count = model
-            .agent_panes
-            .iter()
-            .filter(|p| p.tab_name == *tab_name)
-            .count()
-            .to_string();
-        let row = vec![name, count];
-        let styled = if idx == model.selected_tab {
-            row.into_iter().map(|c| Text::new(c).selected()).collect()
-        } else {
-            row.into_iter().map(Text::new).collect()
-        };
-        table = table.add_styled_row(styled);
-    }
-    if model.tab_names.is_empty() {
-        table = table.add_row(vec!["(no tabs)", ""]);
-    }
-    serialize_table(&table)
+fn render_filter(model: &Model, cols: usize) -> String {
+    let filter_prompt = if model.filter_text.is_empty() {
+        "Filter: (type to filter by agent name or tab)"
+    } else {
+        "Filter:"
+    };
+    format!("{} {}", filter_prompt, model.filter_text)
 }
 
 fn render_agent_panes(model: &Model, cols: usize) -> String {
+    // Filter panes by filter_text (matches agent name or tab name, case-insensitive)
+    let filter_lower = model.filter_text.to_lowercase();
+    let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
+        model.agent_panes.iter().collect()
+    } else {
+        model.agent_panes.iter()
+            .filter(|p| {
+                p.agent_name.to_lowercase().contains(&filter_lower) ||
+                p.tab_name.to_lowercase().contains(&filter_lower)
+            })
+            .collect()
+    };
+    
     let mut table = Table::new().add_row(vec!["Agent", "Status", "Tab"]);
-    // Show all panes, not filtered by tab
-    let panes = &model.agent_panes;
     
     for (idx, pane) in panes.iter().enumerate() {
         let agent = if pane.agent_name.is_empty() {
@@ -1284,7 +1342,13 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
 
 fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode {
-        Mode::View => "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete",
+        Mode::View => {
+            if model.focused_section == Section::AgentPanes {
+                "[Tab] switch • ↑/↓ move • type to filter • Enter focus • Esc clear filter • x kill • n new • a add • e edit • d delete"
+            } else {
+                "[Tab] switch • ↑/↓ move • Enter focus • x kill • n new • a add • e edit • d delete"
+            }
+        },
         Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
         Mode::NewPaneTabSelect => "[↑/↓] choose tab • Enter confirm • Esc cancel",
         Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
@@ -1303,25 +1367,6 @@ fn render_status(model: &Model, cols: usize) -> String {
 }
 
 // ---------- Helpers ----------
-
-fn filtered_panes(model: &Model) -> Vec<AgentPane> {
-    // If no tabs, show all panes
-    if model.tab_names.is_empty() {
-        return model.agent_panes.clone();
-    }
-    // If selected tab is out of bounds, show all panes
-    if model.selected_tab >= model.tab_names.len() {
-        return model.agent_panes.clone();
-    }
-    let tab_name = &model.tab_names[model.selected_tab];
-    // Filter panes that belong to the selected tab
-    model
-        .agent_panes
-        .iter()
-        .filter(|p| p.tab_name == *tab_name)
-        .cloned()
-        .collect()
-}
 
 fn truncate(s: &str, max: usize) -> String {
     if max == 0 {

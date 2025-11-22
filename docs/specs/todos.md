@@ -5,6 +5,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 ## Next actions (do in order)
 - [x] **Agent pane persistence/resync**: Rebuild agent panes from events after reload. Panes survive plugin reload via `SessionUpdate` recovery with heuristic matching (agent name from pane title). Handle `CommandPaneExited/ReRun` to keep statuses current.
 - [x] **Resync robustness**: Reconcile agent panes on `TabUpdate`/`PaneUpdate` deltas. Fixed tab name stability by only updating `tab_name` when empty or invalid, preventing incorrect reassignments when tabs are reordered. Drop stale entries when tabs are removed.
+- [~] **UX: Interactive tabs with filtering**: Make tabs section interactive - Enter jumps to tab, selecting tab filters agent panes list. Remove redundant "Tab" column from agent list when filtered. Show filter indicator.
 - [ ] Permissions + config path polish: confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
 - [ ] Locate persisted agent files in practice (current `/host` maps to plugin launch CWD, yielding `./.config/maestro/agents.kdl`); document actual host path/mount and resolve path strategy.
 - [ ] Tests: cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and agent pane reconciliation.
