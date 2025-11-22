@@ -540,9 +540,7 @@ impl Model {
                 }
             }
             BareKey::Esc => {
-                self.focused_section = Section::Workspaces;
-                self.reset_status();
-                self.clamp_selections();
+                close_self();
             }
             BareKey::Char('x') | BareKey::Char('X') => {
                 if self.focused_section == Section::Sessions {
