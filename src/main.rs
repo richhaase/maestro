@@ -17,6 +17,8 @@ mod agents;
 const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::ReadApplicationState,
     PermissionType::ChangeApplicationState,
+    PermissionType::OpenFiles,
+    PermissionType::FullHdAccess,
     PermissionType::RunCommands,
     PermissionType::OpenTerminalsOrPlugins,
 ];
