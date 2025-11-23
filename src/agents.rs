@@ -39,14 +39,8 @@ pub fn load_agents() -> Result<Vec<Agent>> {
 pub fn save_agents(agents: &[Agent]) -> Result<()> {
     validate_agents(agents)?;
     let path = config_path()?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).context("create config dir")?;
-    }
-
     let payload = agents_to_kdl(agents).context("serialize agents")?;
-    let tmp_path = path.with_extension("kdl.tmp");
-    fs::write(&tmp_path, payload.as_bytes()).context("write temp agents file")?;
-    fs::rename(&tmp_path, &path).context("atomically replace agents file")?;
+    fs::write(&path, payload.as_bytes()).context("write agents file")?;
     Ok(())
 }
 
@@ -146,8 +140,5 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
 }
 
 fn config_base_dir() -> Result<PathBuf> {
-    if Path::new(".").exists() {
-        return Ok(Path::new(".").to_path_buf());
-    }
-    Err(anyhow!("No usable config dir"))
+    Ok(PathBuf::from("/host"))
 }
