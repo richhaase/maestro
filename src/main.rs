@@ -819,6 +819,8 @@ impl Model {
                     Section::AgentPanes => {
                         let idx = self.selected_pane;
                         self.focus_selected(idx);
+                        // Auto-close plugin after focusing agent (for ephemeral launcher usage)
+                        close_self();
                     }
                     Section::Agents => {
                         // Edit selected agent
