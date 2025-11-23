@@ -5,6 +5,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 ## Next actions (do in order)
 
 ### High Priority
+- [ ] **Auto-close plugin after focusing agent**: When plugin is launched in a floating pane via keybinding, pressing Enter to focus an agent should focus that agent pane and then automatically close the plugin pane. This makes the plugin act as an ephemeral launcher/selector that closes after use, so the next time it's opened with a hotkey it appears floating in the current workspace.
 - [x] **Quick Launch from Agents Section**: Press `n` on an agent in Agents section to launch it directly (prompts for workspace and tab, skips agent selection).
 - [x] **Better Status Indicators**: Color coding (green for RUNNING, red for EXITED).
 - [x] **Better Filtering**: Fuzzy matching on all visible fields (agent name, tab name, status text) instead of substring matching.
