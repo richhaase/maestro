@@ -14,7 +14,6 @@ use zellij_tile::ui_components::{serialize_ribbon_line, Table, Text};
 
 mod agents;
 
-// Permissions we intend to request for the MVP.
 const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::ReadApplicationState,
     PermissionType::ChangeApplicationState,
@@ -22,7 +21,6 @@ const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::OpenTerminalsOrPlugins,
 ];
 
-// ---------- Data types ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Agent {
@@ -42,8 +40,8 @@ pub enum PaneStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentPane {
-    pub pane_title: String,  // The pane's title (e.g., "maestro:codex:ws:uuid")
-    pub tab_name: String,    // The actual Zellij tab name where this pane lives
+    pub pane_title: String,  
+    pub tab_name: String,    
     pub pane_id: Option<u32>,
     pub workspace_path: String,
     pub agent_name: String,
@@ -123,11 +121,11 @@ pub struct Model {
     pub selected_pane: usize,
     pub selected_agent: usize,
     pub focused_section: Section,
-    pub filter_text: String, // Type-down filter for agent name or tab name
-    pub filter_active: bool, // Whether filter input mode is active
+    pub filter_text: String, 
+    pub filter_active: bool, 
     pub mode: Mode,
-    pub agent_form_source: Option<Mode>, // Track where agent form came from (AgentManagement vs NewPaneAgentCreate)
-    pub quick_launch_agent_name: Option<String>, // Agent name for quick launch from Agents section
+    pub agent_form_source: Option<Mode>, 
+    pub quick_launch_agent_name: Option<String>, 
     pub workspace_input: String,
     pub wizard_tab_idx: usize,
     pub agent_name_input: String,
@@ -151,7 +149,6 @@ impl Default for Maestro {
     }
 }
 
-// ---------- Model methods ----------
 
 impl Model {
     fn handle_permission_result(&mut self, status: PermissionStatus) {
@@ -170,8 +167,18 @@ impl Model {
     fn apply_tab_update(&mut self, tabs: Vec<TabInfo>) {
         let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
         self.tab_names = tab_names.clone();
-        // Remove panes whose tab no longer exists (unless they have a pane_id, meaning they're still active)
-        // PaneUpdate will update tab_name for panes that still exist
+        
+        
+        for pane in &mut self.agent_panes {
+            if pane.tab_name.is_empty() && pane.pane_id.is_some() {
+                
+                
+                
+            }
+        }
+        
+        
+        
         self.agent_panes
             .retain(|p| p.pane_id.is_some() || tab_names.contains(&p.tab_name));
         self.clamp_selections();
@@ -179,27 +186,77 @@ impl Model {
 
     fn apply_pane_update(&mut self, update: PaneManifest) {
         for (tab_idx, pane_list) in update.panes {
-            // Get the tab name for this tab index
+            
             let tab_name = self.tab_names.get(tab_idx).cloned().unwrap_or_default();
-            if tab_name.is_empty() {
-                continue; // Skip if we don't know the tab name yet
-            }
+            
             for pane in pane_list {
-                // Only update existing panes by pane_id - don't try to match by title
-                // since Zellij may change the title to the command name
+                
                 if let Some(existing) = self.agent_panes.iter_mut().find(|p| p.pane_id == Some(pane.id)) {
-                    // Only update tab_name if it's empty or if the pane is in a tab that no longer exists
-                    // This prevents incorrect reassignments when tabs are reordered
-                    if existing.tab_name.is_empty() || !self.tab_names.contains(&existing.tab_name) {
-                        existing.tab_name = tab_name.clone();
+                    
+                    
+                    if existing.tab_name.is_empty() || (!tab_name.is_empty() && !self.tab_names.contains(&existing.tab_name)) {
+                        if !tab_name.is_empty() {
+                            existing.tab_name = tab_name.clone();
+                        }
                     }
                     existing.status = if pane.exited {
                         PaneStatus::Exited(pane.exit_status)
                     } else {
                         PaneStatus::Running
                     };
+                    continue;
                 }
-                // Don't add new panes here - they should be added via CommandPaneOpened or spawn_agent_pane
+                
+                
+                
+                let title = pane.title.clone();
+                
+                
+                if is_maestro_tab(&title) {
+                    let (agent_name, workspace_path) = parse_title_hint(&title)
+                        .map(|(a, w)| (a, w))
+                        .unwrap_or_default();
+                    self.agent_panes.push(AgentPane {
+                        pane_title: title,
+                        tab_name: tab_name.clone(), 
+                        pane_id: Some(pane.id),
+                        workspace_path,
+                        agent_name,
+                        status: if pane.exited {
+                            PaneStatus::Exited(pane.exit_status)
+                        } else {
+                            PaneStatus::Running
+                        },
+                    });
+                    continue;
+                }
+                
+                
+                
+                
+                if !pane.is_plugin {
+                    let title_base = title.split(" - ").next().unwrap_or(&title).trim();
+                    if self.agents.iter().any(|a| a.name.eq_ignore_ascii_case(title_base)) {
+                        
+                        let agent_name = self.agents.iter()
+                            .find(|a| a.name.eq_ignore_ascii_case(title_base))
+                            .map(|a| a.name.clone())
+                            .unwrap_or_else(|| title_base.to_string());
+                        let reconstructed_title = format!("maestro:{}::recovered", agent_name);
+                        self.agent_panes.push(AgentPane {
+                            pane_title: reconstructed_title,
+                            tab_name: tab_name.clone(), 
+                            pane_id: Some(pane.id),
+                            workspace_path: String::new(), 
+                            agent_name,
+                            status: if pane.exited {
+                                PaneStatus::Exited(pane.exit_status)
+                            } else {
+                                PaneStatus::Running
+                            },
+                        });
+                    }
+                }
             }
         }
         self.clamp_selections();
@@ -213,18 +270,18 @@ impl Model {
         let workspace_path = ctx.get("cwd").cloned().unwrap_or_default();
         let agent_name = ctx.get("agent").cloned().unwrap_or_default();
         
-        // Match by pane_title from context (which we set when creating the pane)
-        // This is the most reliable way to match since we control this value
+        
+        
         let entry = self
             .agent_panes
             .iter_mut()
             .find(|p| p.pane_id == Some(pane_id) || (p.pane_id.is_none() && p.pane_title == title));
         
         if let Some(existing) = entry {
-            // Update existing pane - preserve tab_name if already set
+            
             existing.pane_id = Some(pane_id);
             existing.pane_title = title.clone();
-            // Only update tab_name if it's empty (shouldn't happen, but be safe)
+            
             if existing.tab_name.is_empty() {
                 if let Some(tab_name) = ctx.get("tab_name").cloned() {
                     existing.tab_name = tab_name;
@@ -240,7 +297,7 @@ impl Model {
             }
             existing.status = PaneStatus::Running;
         } else {
-            // New pane - shouldn't happen often, but handle it
+            
             let tab_name = ctx.get("tab_name")
                 .cloned()
                 .or_else(|| self.tab_names.first().cloned())
@@ -258,11 +315,11 @@ impl Model {
     }
 
     fn rebuild_from_session_infos(&mut self, session_infos: &[SessionInfo]) {
-        // Don't clear - merge instead. This preserves panes we just created
-        // that haven't gotten pane_id yet from CommandPaneOpened
         
-        // If we don't have tab names yet, we can't reliably set tab_name.
-        // PaneUpdate will fix it later when TabUpdate fires.
+        
+        
+        
+        
         let has_tab_names = !self.tab_names.is_empty();
         
         for session in session_infos {
@@ -270,11 +327,11 @@ impl Model {
                 let tab_name = if has_tab_names {
                     self.tab_names.get(tab_idx).cloned().unwrap_or_default()
                 } else {
-                    String::new() // Will be fixed by PaneUpdate when TabUpdate fires
+                    String::new() 
                 };
                 
-                // Collect unmatched panes (pane_id: None) in this tab for matching
-                // Only match if we have valid tab names, otherwise PaneUpdate will fix it later
+                
+                
                 let mut unmatched_in_tab: Vec<usize> = if has_tab_names {
                     self.agent_panes
                         .iter()
@@ -283,34 +340,37 @@ impl Model {
                         .map(|(idx, _)| idx)
                         .collect()
                 } else {
-                    Vec::new() // Skip matching if we don't have tab names yet
+                    Vec::new() 
                 };
                 
                 for pane in pane_list {
-                    // First, try to match by pane_id if we already have it
+                    
                     if let Some(existing) = self.agent_panes.iter_mut()
                         .find(|p| p.pane_id == Some(pane.id)) {
-                        // Update existing pane
+                        
                         existing.status = if pane.exited {
                             PaneStatus::Exited(pane.exit_status)
                         } else {
                             PaneStatus::Running
                         };
-                        // Only update tab_name if it's empty or invalid - preserve correct assignments
+                        
                         if existing.tab_name.is_empty() || (!tab_name.is_empty() && !self.tab_names.contains(&existing.tab_name)) {
-                            existing.tab_name = tab_name.clone();
+                            if !tab_name.is_empty() {
+                                existing.tab_name = tab_name.clone();
+                            }
                         }
                         continue;
                     }
                     
-                    // If title starts with maestro:, it's definitely ours - add it
+                    
+                    
                     if is_maestro_tab(&pane.title) {
                         let (agent_name, workspace_path) = parse_title_hint(&pane.title)
                             .map(|(a, w)| (a, w))
                             .unwrap_or_default();
                         self.agent_panes.push(AgentPane {
                             pane_title: pane.title.clone(),
-                            tab_name: tab_name.clone(),
+                            tab_name: tab_name.clone(), 
                             pane_id: Some(pane.id),
                             workspace_path,
                             agent_name,
@@ -323,10 +383,10 @@ impl Model {
                         continue;
                     }
                     
-                    // Otherwise, try to match to an unmatched pane in this tab
-                    // (Zellij changed the title, but it's in the same tab)
+                    
+                    
                     if let Some(unmatched_idx) = unmatched_in_tab.pop() {
-                        // Match this pane to an unmatched one
+                        
                         let existing = &mut self.agent_panes[unmatched_idx];
                         existing.pane_id = Some(pane.id);
                         existing.status = if pane.exited {
@@ -334,35 +394,40 @@ impl Model {
                         } else {
                             PaneStatus::Running
                         };
-                        existing.tab_name = tab_name.clone();
+                        if !tab_name.is_empty() {
+                            existing.tab_name = tab_name.clone();
+                        }
                         continue;
                     }
                     
-                    // Heuristic: If this is a command pane and its title matches an agent name,
-                    // assume it's a maestro pane (Zellij changed the title from maestro:...)
-                    // Extract agent name from title (before " - " separator if present)
-                    let title_base = pane.title.split(" - ").next().unwrap_or(&pane.title).trim();
-                    if !pane.is_plugin && self.agents.iter().any(|a| a.name.eq_ignore_ascii_case(title_base)) {
-                        // Found a matching agent - reconstruct pane_title
-                        let agent_name = self.agents.iter()
-                            .find(|a| a.name.eq_ignore_ascii_case(title_base))
-                            .map(|a| a.name.clone())
-                            .unwrap_or_else(|| title_base.to_string());
-                        let reconstructed_title = format!("maestro:{}::recovered", agent_name);
-                        self.agent_panes.push(AgentPane {
-                            pane_title: reconstructed_title,
-                            tab_name: tab_name.clone(),
-                            pane_id: Some(pane.id),
-                            workspace_path: String::new(), // We don't know this on reload
-                            agent_name,
-                            status: if pane.exited {
-                                PaneStatus::Exited(pane.exit_status)
-                            } else {
-                                PaneStatus::Running
-                            },
-                        });
+                    
+                    
+                    
+                    
+                    if self.agent_panes.is_empty() && !pane.is_plugin {
+                        let title_base = pane.title.split(" - ").next().unwrap_or(&pane.title).trim();
+                        if self.agents.iter().any(|a| a.name.eq_ignore_ascii_case(title_base)) {
+                            
+                            let agent_name = self.agents.iter()
+                                .find(|a| a.name.eq_ignore_ascii_case(title_base))
+                                .map(|a| a.name.clone())
+                                .unwrap_or_else(|| title_base.to_string());
+                            let reconstructed_title = format!("maestro:{}::recovered", agent_name);
+                            self.agent_panes.push(AgentPane {
+                                pane_title: reconstructed_title,
+                                tab_name: tab_name.clone(), 
+                                pane_id: Some(pane.id),
+                                workspace_path: String::new(), 
+                                agent_name,
+                                status: if pane.exited {
+                                    PaneStatus::Exited(pane.exit_status)
+                                } else {
+                                    PaneStatus::Running
+                                },
+                            });
+                        }
                     }
-                    // If no match, skip it - we can't be sure it's ours
+                    
                 }
             }
         }
@@ -377,17 +442,17 @@ impl Model {
             let tab_name = self.tab_names.get(tab_idx).cloned().unwrap_or_default();
             for pane in pane_list {
                 let title = pane.title.clone();
-                // Don't filter by title here - Zellij may have changed it to command name
-                // Instead, check if we already have this pane_id, and if not, try to infer
-                // if it's a maestro pane by checking if we have a pane with this pane_id
-                // or by checking the command/context
                 
-                // First check if we already know about this pane
+                
+                
+                
+                
+                
                 if self.agent_panes.iter().any(|p| p.pane_id == Some(pane.id)) {
-                    continue; // Already have it
+                    continue; 
                 }
                 
-                // If title starts with maestro:, it's definitely ours
+                
                 if is_maestro_tab(&title) {
                     let (agent_name, workspace_path) = parse_title_hint(&title)
                         .map(|(a, w)| (a, w))
@@ -405,12 +470,12 @@ impl Model {
                         },
                     });
                 } else {
-                    // Title doesn't start with maestro: - might be a pane we created
-                    // but Zellij changed the title. Check if we have a pane with pane_id: None
-                    // in this tab that we haven't matched yet
+                    
+                    
+                    
                     if let Some(existing) = self.agent_panes.iter_mut()
                         .find(|p| p.pane_id.is_none() && p.tab_name == tab_name) {
-                        // Found an unmatched pane in this tab - assume it's this one
+                        
                         existing.pane_id = Some(pane.id);
                         existing.status = if pane.exited {
                             PaneStatus::Exited(pane.exit_status)
@@ -418,7 +483,7 @@ impl Model {
                             PaneStatus::Running
                         };
                     }
-                    // Otherwise, skip it - we can't be sure it's ours
+                    
                 }
             }
         }
@@ -479,7 +544,7 @@ impl Model {
 
     fn cancel_to_view(&mut self) {
         self.mode = Mode::View;
-        self.quick_launch_agent_name = None; // Clear quick launch state on cancel
+        self.quick_launch_agent_name = None; 
         self.reset_status();
     }
 
@@ -488,8 +553,8 @@ impl Model {
     }
 
     fn start_new_pane_workspace(&mut self) {
-        // Default to empty path - user can type or use tab to skip
-        // If quick_launch_agent_name is set, we're doing a quick launch (don't clear it)
+        
+        
         self.workspace_input.clear();
         self.mode = Mode::NewPaneWorkspace;
         self.wizard_agent_idx = 0;
@@ -499,7 +564,7 @@ impl Model {
 
     fn start_agent_create(&mut self) {
         self.mode = Mode::AgentFormCreate;
-        self.agent_form_source = Some(Mode::View); // Track that we came from Agents section
+        self.agent_form_source = Some(Mode::View); 
         self.agent_name_input.clear();
         self.agent_command_input.clear();
         self.agent_env_input.clear();
@@ -531,7 +596,7 @@ impl Model {
             self.agent_note_input = agent.note.clone().unwrap_or_default();
             self.agent_form_field = AgentFormField::Name;
             self.form_target_agent = Some(idx);
-            self.agent_form_source = Some(Mode::View); // Track that we came from Agents section
+            self.agent_form_source = Some(Mode::View); 
             self.mode = Mode::AgentFormEdit;
             self.reset_status();
         }
@@ -613,7 +678,7 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        // Get filtered panes (same logic as render_agent_panes) to ensure indices match
+        
         let filter_lower = self.filter_text.to_lowercase();
         let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
             self.agent_panes.iter().collect()
@@ -637,8 +702,8 @@ impl Model {
             self.error_message.clear();
             self.status_message = "Focused agent pane".to_string();
         } else {
-            // If pane_id is None, we can't focus a specific pane
-            // Just switching to the tab is the best we can do
+            
+            
             self.error_message = "Pane ID not available yet".to_string();
         }
     }
@@ -648,7 +713,7 @@ impl Model {
             self.error_message = "permissions not granted".to_string();
             return;
         }
-        // Get filtered panes (same logic as render_agent_panes) to ensure indices match
+        
         let filter_lower = self.filter_text.to_lowercase();
         let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
             self.agent_panes.iter().collect()
@@ -679,7 +744,7 @@ impl Model {
     }
 
     fn clamp_selections(&mut self) {
-        // Clamp selected_pane to filtered panes based on filter_text
+        
         let filter_lower = self.filter_text.to_lowercase();
         let pane_len = if filter_lower.is_empty() {
             self.agent_panes.len()
@@ -708,7 +773,7 @@ impl Model {
     fn move_selection(&mut self, section: Section, delta: isize) {
         let (len, current) = match section {
             Section::AgentPanes => {
-                // Use filtered panes length based on filter_text
+                
                 let filter_lower = self.filter_text.to_lowercase();
                 let panes_len = if filter_lower.is_empty() {
                     self.agent_panes.len()
@@ -763,35 +828,40 @@ impl Model {
     }
 
     fn handle_key_event_view(&mut self, key: KeyWithModifier) {
-        // If filter is active, handle filter input
+        
+        if !key.key_modifiers.is_empty() && key.bare_key != BareKey::Tab {
+            return;
+        }
+        
+        
         if self.filter_active {
             match key.bare_key {
                 BareKey::Char(c) => {
-                    // In filter mode, j/k are intercepted and added to filter text
+                    
                     self.filter_text.push(c);
-                    self.selected_pane = 0; // Reset selection when filter changes
+                    self.selected_pane = 0; 
                     self.clamp_selections();
                     return;
                 }
                 BareKey::Up => {
-                    // Arrow keys work for movement in filter mode
+                    
                     self.move_selection(self.focused_section, -1);
                     return;
                 }
                 BareKey::Down => {
-                    // Arrow keys work for movement in filter mode
+                    
                     self.move_selection(self.focused_section, 1);
                     return;
                 }
                 BareKey::Backspace => {
-                    // Remove last character from filter
+                    
                     self.filter_text.pop();
-                    self.selected_pane = 0; // Reset selection when filter changes
+                    self.selected_pane = 0; 
                     self.clamp_selections();
                     return;
                 }
                 BareKey::Esc => {
-                    // Exit filter mode and clear filter
+                    
                     self.filter_active = false;
                     self.filter_text.clear();
                     self.selected_pane = 0;
@@ -804,11 +874,11 @@ impl Model {
         
         match key.bare_key {
             BareKey::Char('j') | BareKey::Char('J') => {
-                // j/k work for movement in normal mode (not filter mode)
+                
                 self.move_selection(self.focused_section, 1);
             }
             BareKey::Char('k') | BareKey::Char('K') => {
-                // j/k work for movement in normal mode (not filter mode)
+                
                 self.move_selection(self.focused_section, -1);
             }
             BareKey::Tab => {
@@ -819,11 +889,11 @@ impl Model {
                     Section::AgentPanes => {
                         let idx = self.selected_pane;
                         self.focus_selected(idx);
-                        // Auto-close plugin after focusing agent (for ephemeral launcher usage)
+                        
                         close_self();
                     }
                     Section::Agents => {
-                        // Edit selected agent
+                        
                         if self.selected_agent < self.agents.len() {
                             self.start_agent_edit();
                         }
@@ -834,7 +904,7 @@ impl Model {
                 close_self();
             }
             BareKey::Char('f') | BareKey::Char('F') => {
-                // Enter filter mode (only for AgentPanes)
+                
                 if self.focused_section == Section::AgentPanes {
                     self.filter_active = true;
                     self.filter_text.clear();
@@ -850,7 +920,7 @@ impl Model {
             }
             BareKey::Char('e') | BareKey::Char('E') => {
                 if self.focused_section == Section::Agents {
-                    // Edit selected agent
+                    
                     if self.selected_agent < self.agents.len() {
                         self.start_agent_edit();
                     }
@@ -858,7 +928,7 @@ impl Model {
             }
             BareKey::Char('d') | BareKey::Char('D') => {
                 if self.focused_section == Section::Agents {
-                    // Delete selected agent
+                    
                     if self.selected_agent < self.agents.len() {
                         self.start_agent_delete_confirm();
                     }
@@ -866,7 +936,7 @@ impl Model {
             }
             BareKey::Char('n') | BareKey::Char('N') => {
                 if self.focused_section == Section::Agents {
-                    // Launch selected agent (quick launch)
+                    
                     if self.selected_agent < self.agents.len() {
                         let agent_name = self.agents[self.selected_agent].name.clone();
                         self.quick_launch_agent_name = Some(agent_name);
@@ -878,10 +948,10 @@ impl Model {
             }
             BareKey::Char('a') | BareKey::Char('A') => {
                 if self.focused_section == Section::Agents {
-                    // Create new agent
+                    
                     self.start_agent_create();
                 } else {
-                    // Switch to Agents section
+                    
                     self.focused_section = Section::Agents;
                     self.clamp_selections();
                 }
@@ -926,7 +996,7 @@ impl Model {
                 }
             }
             BareKey::Enter => {
-                // If quick launch agent is set, skip agent selection and launch directly
+                
                 if let Some(agent_name) = self.quick_launch_agent_name.take() {
                     let workspace = self.workspace_input.trim().to_string();
                     let tab_choice = selected_tab_choice(self);
@@ -969,7 +1039,7 @@ impl Model {
                     }
                 } else {
                     self.mode = Mode::NewPaneAgentCreate;
-                    self.agent_form_source = Some(Mode::NewPaneAgentSelect); // Track that we came from wizard
+                    self.agent_form_source = Some(Mode::NewPaneAgentSelect); 
                     self.agent_name_input.clear();
                     self.agent_command_input.clear();
                     self.agent_env_input.clear();
@@ -1015,12 +1085,12 @@ impl Model {
                                     self.spawn_agent_pane(workspace, agent.name.clone(), tab_choice);
                                 }
                                 if self.error_message.is_empty() {
-                                    // Return to View mode
+                                    
                                     if launch_after {
-                                        // If launching, we're in NewPaneAgentCreate - return to View
+                                        
                                         self.view_preserve_messages();
                                     } else {
-                                        // Return to View mode (from Agents section)
+                                        
                                         self.view_preserve_messages();
                                     }
                                 }
@@ -1036,7 +1106,7 @@ impl Model {
                 }
             }
             BareKey::Esc => {
-                // Return to View mode
+                
                 self.agent_form_source = None;
                 self.cancel_to_view();
             },
@@ -1063,11 +1133,11 @@ impl Model {
                         }
                     }
                 }
-                // Return to View mode (delete confirm comes from Agents section)
+                
                 self.mode = Mode::View;
             }
             BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => {
-                // Return to View mode
+                
                 self.mode = Mode::View;
             }
             _ => {}
@@ -1144,7 +1214,6 @@ impl Model {
     }
 }
 
-// ---------- Zellij plugin entry ----------
 
 impl ZellijPlugin for Maestro {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
@@ -1179,15 +1248,22 @@ impl ZellijPlugin for Maestro {
                 true
             }
             Event::TabUpdate(tabs) => {
+                eprintln!("maestro: TabUpdate fired with {} tabs: {:?}", tabs.len(), tabs.iter().map(|t| &t.name).collect::<Vec<_>>());
                 self.model.apply_tab_update(tabs);
                 true
             }
             Event::PaneUpdate(manifest) => {
+                let tab_count = manifest.panes.len();
+                let total_panes: usize = manifest.panes.values().map(|v| v.len()).sum();
+                eprintln!("maestro: PaneUpdate fired with {} tabs, {} total panes, {} agent panes before", tab_count, total_panes, self.model.agent_panes.len());
                 self.model.apply_pane_update(manifest);
+                eprintln!("maestro: After PaneUpdate: {} agent panes", self.model.agent_panes.len());
                 true
             }
             Event::SessionUpdate(session_info, _resurrectable) => {
+                eprintln!("maestro: SessionUpdate fired with {} sessions, {} agent panes before", session_info.len(), self.model.agent_panes.len());
                 self.model.handle_session_update(session_info);
+                eprintln!("maestro: After SessionUpdate: {} agent panes", self.model.agent_panes.len());
                 true
             }
             Event::CommandPaneOpened(pane_id, ctx) => {
@@ -1237,22 +1313,21 @@ impl ZellijPlugin for Maestro {
     }
 }
 
-// ---------- Rendering ----------
 
 fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
     
-    // Render section tabs
+    
     out.push_str(&render_section_tabs(model, cols));
     out.push('\n');
     
-    // Show filter input if filter is active (only for AgentPanes section)
+    
     if model.filter_active && model.focused_section == Section::AgentPanes {
         out.push_str(&render_filter(model, cols));
         out.push('\n');
     }
     
-    // Render content based on focused section
+    
     match model.focused_section {
         Section::AgentPanes => {
             out.push_str(&render_agent_panes(model, cols));
@@ -1296,7 +1371,7 @@ fn render_filter(model: &Model, _cols: usize) -> String {
 }
 
 fn render_agent_panes(model: &Model, cols: usize) -> String {
-    // Filter panes using fuzzy matching on all visible fields (agent name, tab name, status)
+    
     let panes: Vec<&AgentPane> = if model.filter_text.is_empty() {
         model.agent_panes.iter().collect()
     } else {
@@ -1305,20 +1380,20 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         
         model.agent_panes.iter()
             .filter(|p| {
-                // Build searchable text from all visible fields
+                
                 let status_text = match p.status {
                     PaneStatus::Running => "RUNNING",
                     PaneStatus::Exited(_) => "EXITED",
                 };
                 let searchable = format!("{} {} {}", p.agent_name, p.tab_name, status_text);
                 
-                // Fuzzy match (case-insensitive)
+                
                 matcher.fuzzy_match(&searchable, filter_text).is_some()
             })
             .collect()
     };
     
-    // Column order: Tab, Agent, Status
+    
     let mut table = Table::new().add_row(vec!["Tab", "Agent", "Status"]);
     
     for (idx, pane) in panes.iter().enumerate() {
@@ -1333,12 +1408,12 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             PaneStatus::Exited(_) => "EXITED",
         };
         
-        // Column order: Tab, Agent, Status
-        // Use color_all with index_level 0 for foreground color
-        // Zellij maps these to theme colors: 0=default, 1=red, 2=green, etc.
+        
+        
+        
         let status_color = match pane.status {
-            PaneStatus::Running => 2, // Green
-            PaneStatus::Exited(_) => 1, // Red
+            PaneStatus::Running => 2, 
+            PaneStatus::Exited(_) => 1, 
         };
         
         let mut row = vec![
@@ -1347,7 +1422,7 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             Text::new(status_text.to_string()).color_all(status_color),
         ];
         
-        // Apply selection highlighting to entire row if selected
+        
         if idx == model.selected_pane {
             row = row.into_iter().map(|t| t.selected()).collect();
         }
@@ -1355,21 +1430,21 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         table = table.add_styled_row(row);
     }
     if panes.is_empty() {
-        // Column order: Tab, Agent, Status
+        
         table = table.add_row(vec!["(no agent panes)".to_string(), "".to_string(), "".to_string()]);
     }
     serialize_table(&table)
 }
 
 fn render_agent_management(model: &Model, cols: usize) -> String {
-    // Copy exact pattern from render_agent_panes which works correctly
+    
     let mut table = Table::new().add_row(vec!["Agent", "Command", "Note"]);
     
-    // Estimate column widths: Agent ~25%, Command ~50%, Note ~25%
+    
     let command_col_width = (cols as f32 * 0.50) as usize;
     
     for (idx, agent) in model.agents.iter().enumerate() {
-        // Match render_agent_panes pattern exactly - use references where possible
+        
         let name = if agent.name.is_empty() {
             "(agent)"
         } else {
@@ -1377,12 +1452,12 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         };
         let command_full = agent.command.join(" ");
         let command = truncate(&command_full, command_col_width);
-        // Ensure note always has content - use placeholder if empty to help table calculate column widths
+        
         let note = agent.note.as_ref()
             .map(|n| n.as_str())
             .filter(|n| !n.is_empty())
-            .unwrap_or("—"); // Use em-dash as placeholder for empty notes
-        // Match render_agent_panes: convert to String like it does
+            .unwrap_or("—"); 
+        
         let row = vec![name.to_string(), command.to_string(), note.to_string()];
         let styled = if idx == model.selected_agent {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
@@ -1530,7 +1605,6 @@ fn render_status(model: &Model, cols: usize) -> String {
     truncate(&msg, cols)
 }
 
-// ---------- Helpers ----------
 
 fn truncate(s: &str, max: usize) -> String {
     if max == 0 {
@@ -1555,7 +1629,7 @@ fn truncate_path(path: &str, max: usize) -> String {
         return "—".to_string();
     }
     
-    // Try to get home directory
+    
     let home = std::env::var("HOME").unwrap_or_default();
     let relative_path = if !home.is_empty() && path.starts_with(&home) {
         path.replacen(&home, "~", 1)
@@ -1563,18 +1637,18 @@ fn truncate_path(path: &str, max: usize) -> String {
         path.to_string()
     };
     
-    // If it fits, return as-is
+    
     if relative_path.chars().count() <= max {
         return relative_path;
     }
     
-    // Truncate from the left, showing the end (basename)
+    
     let chars: Vec<char> = relative_path.chars().collect();
     if chars.len() <= max {
         return relative_path;
     }
     
-    // Show ... + end of path
+    
     let ellipsis = "…";
     let ellipsis_len = ellipsis.chars().count();
     if max <= ellipsis_len {
@@ -1716,11 +1790,9 @@ fn parse_env_input(input: &str) -> Result<Option<BTreeMap<String, String>>, Stri
     Ok(Some(map))
 }
 
-// ---------- Plugin registration ----------
 
 register_plugin!(Maestro);
 
-// ---------- Tests ----------
 
 #[cfg(test)]
 mod tests {
@@ -1852,13 +1924,13 @@ mod tests {
         model.selected_agent = 5;
         model.clamp_selections();
 
-        assert_eq!(model.selected_pane, 2); // Clamped to max (3 panes - 1)
+        assert_eq!(model.selected_pane, 2); 
         assert_eq!(model.selected_agent, 1);
 
         model.move_selection(Section::AgentPanes, -1);
         assert_eq!(model.selected_pane, 1);
         model.move_selection(Section::AgentPanes, 5);
-        assert_eq!(model.selected_pane, 2); // Clamped to max
+        assert_eq!(model.selected_pane, 2); 
     }
 
     #[test]
@@ -1898,7 +1970,7 @@ mod tests {
             bare_key: BareKey::Esc,
             key_modifiers: BTreeSet::new(),
         });
-        // Esc closes plugin, so mode should be View (default)
+        
         assert_eq!(model.mode, Mode::View);
     }
 }
