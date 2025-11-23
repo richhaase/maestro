@@ -404,10 +404,9 @@ impl Model {
                     
                     
                     
-                    if self.agent_panes.is_empty() && !pane.is_plugin {
+                    if !pane.is_plugin {
                         let title_base = pane.title.split(" - ").next().unwrap_or(&pane.title).trim();
                         if self.agents.iter().any(|a| a.name.eq_ignore_ascii_case(title_base)) {
-                            
                             let agent_name = self.agents.iter()
                                 .find(|a| a.name.eq_ignore_ascii_case(title_base))
                                 .map(|a| a.name.clone())
@@ -1248,22 +1247,15 @@ impl ZellijPlugin for Maestro {
                 true
             }
             Event::TabUpdate(tabs) => {
-                eprintln!("maestro: TabUpdate fired with {} tabs: {:?}", tabs.len(), tabs.iter().map(|t| &t.name).collect::<Vec<_>>());
                 self.model.apply_tab_update(tabs);
                 true
             }
             Event::PaneUpdate(manifest) => {
-                let tab_count = manifest.panes.len();
-                let total_panes: usize = manifest.panes.values().map(|v| v.len()).sum();
-                eprintln!("maestro: PaneUpdate fired with {} tabs, {} total panes, {} agent panes before", tab_count, total_panes, self.model.agent_panes.len());
                 self.model.apply_pane_update(manifest);
-                eprintln!("maestro: After PaneUpdate: {} agent panes", self.model.agent_panes.len());
                 true
             }
             Event::SessionUpdate(session_info, _resurrectable) => {
-                eprintln!("maestro: SessionUpdate fired with {} sessions, {} agent panes before", session_info.len(), self.model.agent_panes.len());
                 self.model.handle_session_update(session_info);
-                eprintln!("maestro: After SessionUpdate: {} agent panes", self.model.agent_panes.len());
                 true
             }
             Event::CommandPaneOpened(pane_id, ctx) => {
