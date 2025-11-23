@@ -136,6 +136,7 @@ pub struct Model {
     pub agent_form_field: AgentFormField,
     pub wizard_agent_idx: usize,
     pub form_target_agent: Option<usize>,
+    pub session_name: Option<String>,
 }
 
 pub struct Maestro {
@@ -309,6 +310,14 @@ impl Model {
         let has_tab_names = !self.tab_names.is_empty();
 
         for session in session_infos {
+            let session_name = session.name.clone();
+            if let Some(current) = &self.session_name {
+                    if &session_name != current {
+                    continue;
+                }
+            } else {
+                self.session_name = Some(session_name.clone());
+            }
             for (tab_idx, pane_list) in session.panes.clone().panes {
                 let tab_name = if has_tab_names {
                     self.tab_names.get(tab_idx).cloned().unwrap_or_default()
