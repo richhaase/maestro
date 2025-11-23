@@ -2,6 +2,8 @@ use std::collections::{hash_map::DefaultHasher, BTreeMap};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
+use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zellij_tile::prelude::{
@@ -1292,15 +1294,24 @@ fn render_filter(model: &Model, _cols: usize) -> String {
 }
 
 fn render_agent_panes(model: &Model, cols: usize) -> String {
-    // Filter panes by filter_text (matches agent name or tab name, case-insensitive)
-    let filter_lower = model.filter_text.to_lowercase();
-    let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
+    // Filter panes using fuzzy matching on all visible fields (agent name, tab name, status)
+    let panes: Vec<&AgentPane> = if model.filter_text.is_empty() {
         model.agent_panes.iter().collect()
     } else {
+        let matcher = SkimMatcherV2::default();
+        let filter_text = &model.filter_text;
+        
         model.agent_panes.iter()
             .filter(|p| {
-                p.agent_name.to_lowercase().contains(&filter_lower) ||
-                p.tab_name.to_lowercase().contains(&filter_lower)
+                // Build searchable text from all visible fields
+                let status_text = match p.status {
+                    PaneStatus::Running => "RUNNING",
+                    PaneStatus::Exited(_) => "EXITED",
+                };
+                let searchable = format!("{} {} {}", p.agent_name, p.tab_name, status_text);
+                
+                // Fuzzy match (case-insensitive)
+                matcher.fuzzy_match(&searchable, filter_text).is_some()
             })
             .collect()
     };
@@ -1352,6 +1363,9 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
     // Copy exact pattern from render_agent_panes which works correctly
     let mut table = Table::new().add_row(vec!["Agent", "Command", "Note"]);
     
+    // Estimate column widths: Agent ~25%, Command ~50%, Note ~25%
+    let command_col_width = (cols as f32 * 0.50) as usize;
+    
     for (idx, agent) in model.agents.iter().enumerate() {
         // Match render_agent_panes pattern exactly - use references where possible
         let name = if agent.name.is_empty() {
@@ -1359,7 +1373,8 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         } else {
             &agent.name
         };
-        let command = agent.command.join(" ");
+        let command_full = agent.command.join(" ");
+        let command = truncate(&command_full, command_col_width);
         // Ensure note always has content - use placeholder if empty to help table calculate column widths
         let note = agent.note.as_ref()
             .map(|n| n.as_str())
@@ -1528,6 +1543,45 @@ fn truncate(s: &str, max: usize) -> String {
         out.push(ch);
     }
     out
+}
+
+fn truncate_path(path: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    if path.is_empty() {
+        return "—".to_string();
+    }
+    
+    // Try to get home directory
+    let home = std::env::var("HOME").unwrap_or_default();
+    let relative_path = if !home.is_empty() && path.starts_with(&home) {
+        path.replacen(&home, "~", 1)
+    } else {
+        path.to_string()
+    };
+    
+    // If it fits, return as-is
+    if relative_path.chars().count() <= max {
+        return relative_path;
+    }
+    
+    // Truncate from the left, showing the end (basename)
+    let chars: Vec<char> = relative_path.chars().collect();
+    if chars.len() <= max {
+        return relative_path;
+    }
+    
+    // Show ... + end of path
+    let ellipsis = "…";
+    let ellipsis_len = ellipsis.chars().count();
+    if max <= ellipsis_len {
+        return truncate(&relative_path, max);
+    }
+    
+    let take_from_end = max - ellipsis_len;
+    let end: String = chars.iter().rev().take(take_from_end).rev().collect();
+    format!("{}{}", ellipsis, end)
 }
 
 fn build_command_with_env(agent: &Agent) -> Vec<String> {

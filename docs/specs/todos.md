@@ -5,29 +5,22 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` complete
 ## Next actions (do in order)
 
 ### High Priority
-- [ ] **Smart Wizard Skipping**: Skip workspace step if empty (go straight to tab select), skip tab select if only one tab exists, remember last used workspace/tab as defaults.
 - [x] **Quick Launch from Agents Section**: Press `n` on an agent in Agents section to launch it directly (prompts for workspace and tab, skips agent selection).
 - [x] **Better Status Indicators**: Color coding (green for RUNNING, red for EXITED).
+- [x] **Better Filtering**: Fuzzy matching on all visible fields (agent name, tab name, status text) instead of substring matching.
+- [ ] **Permissions + config path polish**: Confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
+- [ ] **Tests**: Cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and agent pane reconciliation.
 
 ### Medium Priority
-- [ ] **More Context in Tables**: Show workspace path in Maestro table (maybe as tooltip/hover or 4th column), truncate long paths intelligently, show agent command preview in Agents table.
-- [ ] **Bulk Operations**: Select multiple panes (with Shift or marks), kill all panes in a tab, kill all exited panes.
-- [ ] **Better Filtering**: Fuzzy matching instead of substring, filter by status (running/exited), filter by tab name.
+- [ ] **Fix status color mapping**: Research and fix color indices for RUNNING (currently neon green) and EXITED (currently teal) to match desired colors. The `index_level` parameter maps to Zellij's theme palette, need to find correct indices or alternative approach.
+- [ ] **Docs**: Refresh README/spec to describe controls, config path, build/reload steps, and current limitations once the prototype works.
+
+### Backlog (requires persistence investigation)
+- [ ] **More Context in Tables**: Show workspace path in Maestro table (maybe as tooltip/hover or 4th column), truncate long paths intelligently, show agent command preview in Agents table. (Note: Command truncation already implemented; workspace path removed as not persisted.)
 - [ ] **Agent Templates/Groups**: Tag agents (e.g., "dev", "prod", "monitoring"), filter agents by tags, agent groups/categories.
 - [ ] **More Quick Actions**: `:` command mode (like vim) for advanced actions, `g` + key for "go to" actions (g+t for tab, g+a for agent), `?` for help overlay.
 - [ ] **Workspace Presets**: Save common workspace paths, quick select from preset list, remember frequently used paths.
-
-### Low Priority
 - [ ] **Recent/Favorites**: Track recently launched agents (last 3-5), quick access to recent agents, optional "favorites" or "pinned" agents.
-- [ ] **Empty States**: Helpful messages when lists are empty: "Press 'n' to create your first agent pane", quick tips in empty states.
-- [ ] **Duplicate/Restart Actions**: `r` key to restart selected agent pane, `d` key to duplicate agent pane (same agent, new pane), quick relaunch of exited panes.
-
-### Infrastructure/Polish
-- [ ] **Fix status color mapping**: Research and fix color indices for RUNNING (currently neon green) and EXITED (currently teal) to match desired colors. The `index_level` parameter maps to Zellij's theme palette, need to find correct indices or alternative approach.
-- [ ] Permissions + config path polish: confirm `/host` config resolution for agents file, and surface a blocking retry prompt when permissions are denied.
-- [ ] Locate persisted agent files in practice (current `/host` maps to plugin launch CWD, yielding `./.config/maestro/agents.kdl`); document actual host path/mount and resolve path strategy.
-- [ ] Tests: cover form parsing/validation, state-machine transitions, command construction (titles/env/cwd), and agent pane reconciliation.
-- [ ] Docs: refresh README/spec to describe controls, config path, build/reload steps, and current limitations once the prototype works.
 
 ## Done
 - [x] **Quick Launch from Agents Section**: Press `n` on an agent in Agents section to launch it directly. Wizard prompts for workspace and tab, skipping agent selection since agent is already chosen.
