@@ -961,7 +961,9 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
             }
             Section::Agents => {
                 if model.selected_agent() < model.agents().len() {
-                    start_agent_edit(model);
+                    let agent_name = model.agents()[model.selected_agent()].name.clone();
+                    *model.quick_launch_agent_name_mut() = Some(agent_name);
+                    start_new_pane_workspace(model);
                 }
             }
         },

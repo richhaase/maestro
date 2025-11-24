@@ -25,7 +25,7 @@ impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::AgentPanes => "Maestro",
-            Section::Agents => "Agents",
+            Section::Agents => "Agent Config",
         }
     }
 }
@@ -598,7 +598,7 @@ mod tests {
     #[test]
     fn test_section_label() {
         assert_eq!(Section::AgentPanes.label(), "Maestro");
-        assert_eq!(Section::Agents.label(), "Agents");
+        assert_eq!(Section::Agents.label(), "Agent Config");
     }
 
     #[test]
