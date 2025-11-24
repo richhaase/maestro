@@ -249,9 +249,27 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         )),
         Mode::NewPaneTabSelect => {
             let mut lines = Vec::new();
-            lines.push("New Agent Pane: select tab".to_string());
-            for (idx, tab) in model.tab_names().iter().enumerate() {
-                let prefix = if idx == model.wizard_tab_idx() {
+            let filter_text = model.wizard_tab_filter();
+            let default_tab_name = crate::utils::default_tab_name(model.workspace_input());
+            
+            let filtered_tabs: Vec<(usize, &String)> = if filter_text.is_empty() {
+                model.tab_names().iter().enumerate().collect()
+            } else {
+                let matcher = SkimMatcherV2::default();
+                model.tab_names()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
+                    .collect()
+            };
+            
+            lines.push("New Agent Pane: select tab or type to create".to_string());
+            if !filter_text.is_empty() {
+                lines.push(format!("Filter: {}_", truncate(filter_text, cols.saturating_sub(8))));
+            }
+            
+            for (display_idx, (_, tab)) in filtered_tabs.iter().enumerate() {
+                let prefix = if display_idx == model.wizard_tab_idx() {
                     ">"
                 } else {
                     " "
@@ -262,14 +280,34 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                     truncate(tab, cols.saturating_sub(2))
                 ));
             }
-            let create_idx = model.tab_names().len();
-            let prefix = if model.wizard_tab_idx() == create_idx {
-                ">"
-            } else {
-                " "
-            };
-            let suggested = crate::utils::workspace_tab_name(model.workspace_input());
-            lines.push(format!("{prefix} (new tab: {suggested})"));
+            
+            let has_exact_match = filtered_tabs.iter().any(|(_, tab)| tab.eq_ignore_ascii_case(filter_text));
+            let show_new_tab = !filter_text.is_empty() && !has_exact_match;
+            let new_tab_idx = filtered_tabs.len();
+            
+            if show_new_tab || (filter_text.is_empty() && model.wizard_tab_idx() == new_tab_idx) {
+                let is_selected = model.wizard_tab_idx() == new_tab_idx;
+                let prefix = if is_selected {
+                    ">"
+                } else {
+                    " "
+                };
+                let tab_name = if filter_text.is_empty() {
+                    default_tab_name.clone()
+                } else {
+                    filter_text.to_string()
+                };
+                lines.push(format!("{prefix} (new tab: {})", truncate(&tab_name, cols.saturating_sub(15))));
+            } else if filter_text.is_empty() {
+                let is_selected = model.wizard_tab_idx() == new_tab_idx;
+                let prefix = if is_selected {
+                    ">"
+                } else {
+                    " "
+                };
+                lines.push(format!("{prefix} (new tab: {default_tab_name})"));
+            }
+            
             Some(lines.join("\n"))
         }
         Mode::NewPaneAgentSelect => {
@@ -373,8 +411,8 @@ fn render_status(model: &Model, cols: usize) -> String {
                 }
             }
         }
-        Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
-        Mode::NewPaneTabSelect => "[j/k or ↑/↓] choose tab • Enter confirm • Esc cancel",
+        Mode::NewPaneWorkspace => "[Enter] continue • Esc cancel • type to edit path",
+        Mode::NewPaneTabSelect => "[j/k or ↑/↓] choose tab • type to edit new tab name • Enter confirm • Esc cancel",
         Mode::NewPaneAgentSelect => "[j/k or ↑/↓] choose • Enter select/create • Esc cancel",
         Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",

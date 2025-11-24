@@ -1,6 +1,4 @@
 use std::collections::BTreeMap;
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 use crate::agent::Agent;
 
@@ -73,19 +71,19 @@ pub fn workspace_basename(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-/// Generate a tab name from a workspace path
-pub fn workspace_tab_name(path: &str) -> String {
-    let base = if path.is_empty() {
-        "workspace".to_string()
+/// Generate a default tab name from a workspace path
+pub fn default_tab_name(workspace_path: &str) -> String {
+    let basename = workspace_basename(workspace_path);
+    if basename.is_empty() {
+        "maestro:workspace".to_string()
     } else {
-        workspace_basename(path)
-    };
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    let hash = hasher.finish();
-    let short = format!("{hash:016x}");
-    let suffix = &short[..6.min(short.len())];
-    format!("maestro:{base}:{suffix}")
+        format!("maestro:{basename}")
+    }
+}
+
+/// Generate a tab name from a workspace path (deprecated, use default_tab_name)
+pub fn workspace_tab_name(path: &str) -> String {
+    default_tab_name(path)
 }
 
 /// Check if a pane title is a Maestro-managed pane
@@ -211,11 +209,17 @@ mod tests {
     #[test]
     fn test_workspace_tab_name() {
         let name1 = workspace_tab_name("/path/to/workspace");
-        assert!(name1.starts_with("maestro:workspace:"));
-        assert_eq!(name1.split(':').count(), 3);
+        assert_eq!(name1, "maestro:workspace");
+        assert_eq!(workspace_tab_name(""), "maestro:workspace");
+    }
 
-        let name2 = workspace_tab_name("");
-        assert!(name2.starts_with("maestro:workspace:"));
+    #[test]
+    fn test_default_tab_name() {
+        assert_eq!(default_tab_name("/path/to/myapp"), "maestro:myapp");
+        assert_eq!(default_tab_name("/home/user/docs"), "maestro:docs");
+        assert_eq!(default_tab_name("/home/user"), "maestro:user");
+        assert_eq!(default_tab_name(""), "maestro:workspace");
+        assert_eq!(default_tab_name("/"), "maestro:workspace");
     }
 
     #[test]

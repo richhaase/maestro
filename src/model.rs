@@ -19,6 +19,7 @@ struct SelectionState {
     focused_section: Section,
     wizard_tab_idx: usize,
     wizard_agent_idx: usize,
+    wizard_tab_filter: String,
 }
 
 #[derive(Debug, Default)]
@@ -33,6 +34,7 @@ pub struct Model {
     mode: Mode,
     quick_launch_agent_name: Option<String>,
     workspace_input: String,
+    custom_tab_name: Option<String>,
     filter_text: String,
     filter_active: bool,
     session_name: Option<String>,
@@ -107,6 +109,14 @@ impl Model {
 
     pub fn wizard_agent_idx(&self) -> usize {
         self.selection.wizard_agent_idx
+    }
+
+    pub fn wizard_tab_filter(&self) -> &str {
+        &self.selection.wizard_tab_filter
+    }
+
+    pub fn wizard_tab_filter_mut(&mut self) -> &mut String {
+        &mut self.selection.wizard_tab_filter
     }
 
     pub fn agent_name_input(&self) -> &str {
@@ -235,6 +245,14 @@ impl Model {
 
     pub fn quick_launch_agent_name(&self) -> Option<&String> {
         self.quick_launch_agent_name.as_ref()
+    }
+
+    pub fn custom_tab_name(&self) -> Option<&String> {
+        self.custom_tab_name.as_ref()
+    }
+
+    pub fn custom_tab_name_mut(&mut self) -> &mut Option<String> {
+        &mut self.custom_tab_name
     }
 
     pub fn clamp_selections(&mut self) {
