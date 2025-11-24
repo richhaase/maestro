@@ -9,7 +9,7 @@ use maestro::handlers::{
     handle_session_update,
 };
 use maestro::model::Model;
-use maestro::ui::render_ui;
+use maestro::ui::{render_permissions_denied, render_permissions_requesting, render_ui};
 
 const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::ReadApplicationState,
@@ -105,19 +105,11 @@ impl ZellijPlugin for Maestro {
 
     fn render(&mut self, rows: usize, cols: usize) {
         if self.model.permissions_denied() {
-            let text = format!(
-                "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {}x{}",
-                cols, rows
-            );
-            print!("{text}");
+            print!("{}", render_permissions_denied(rows, cols));
             return;
         }
         if !self.model.permissions_granted() {
-            let text = format!(
-                "Maestro requesting permissions...\nViewport: {}x{}",
-                cols, rows
-            );
-            print!("{text}");
+            print!("{}", render_permissions_requesting(rows, cols));
             return;
         }
 

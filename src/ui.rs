@@ -87,6 +87,20 @@ pub fn prev_field(current: AgentFormField) -> AgentFormField {
 }
 
 /// Render the main UI
+pub fn render_permissions_denied(rows: usize, cols: usize) -> String {
+    format!(
+        "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {}x{}",
+        cols, rows
+    )
+}
+
+pub fn render_permissions_requesting(rows: usize, cols: usize) -> String {
+    format!(
+        "Maestro requesting permissions...\nViewport: {}x{}",
+        cols, rows
+    )
+}
+
 pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
 
