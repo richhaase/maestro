@@ -32,10 +32,10 @@ impl Default for Maestro {
 impl ZellijPlugin for Maestro {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
         match load_agents_default() {
-            Ok(list) => self.model.agents = list,
+            Ok(list) => *self.model.agents_mut() = list,
             Err(err) => {
                 eprintln!("maestro: load agents: {err}");
-                self.model.agents = Vec::new();
+                *self.model.agents_mut() = Vec::new();
             }
         }
 
@@ -100,7 +100,7 @@ impl ZellijPlugin for Maestro {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.model.permissions_denied {
+        if self.model.permissions_denied() {
             let text = format!(
                 "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {}x{}",
                 cols, rows
@@ -108,7 +108,7 @@ impl ZellijPlugin for Maestro {
             print!("{text}");
             return;
         }
-        if !self.model.permissions_granted {
+        if !self.model.permissions_granted() {
             let text = format!(
                 "Maestro requesting permissions...\nViewport: {}x{}",
                 cols, rows

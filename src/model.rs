@@ -19,8 +19,8 @@ pub enum TabChoice {
 }
 
 fn selected_tab_choice(model: &Model) -> TabChoice {
-    if model.wizard_tab_idx < model.tab_names.len() {
-        TabChoice::Existing(model.tab_names[model.wizard_tab_idx].clone())
+    if model.selection.wizard_tab_idx < model.tab_names.len() {
+        TabChoice::Existing(model.tab_names[model.selection.wizard_tab_idx].clone())
     } else {
         TabChoice::New
     }
@@ -45,42 +45,153 @@ fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
 }
 
 fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
-    match model.agent_form_field {
-        AgentFormField::Name => handle_text_edit(&mut model.agent_name_input, key),
-        AgentFormField::Command => handle_text_edit(&mut model.agent_command_input, key),
-        AgentFormField::Env => handle_text_edit(&mut model.agent_env_input, key),
-        AgentFormField::Note => handle_text_edit(&mut model.agent_note_input, key),
+    match model.form.agent_form_field {
+        AgentFormField::Name => handle_text_edit(&mut model.form.agent_name_input, key),
+        AgentFormField::Command => handle_text_edit(&mut model.form.agent_command_input, key),
+        AgentFormField::Env => handle_text_edit(&mut model.form.agent_env_input, key),
+        AgentFormField::Note => handle_text_edit(&mut model.form.agent_note_input, key),
     }
 }
 
 #[derive(Debug, Default)]
+struct FormState {
+    agent_name_input: String,
+    agent_command_input: String,
+    agent_env_input: String,
+    agent_note_input: String,
+    agent_form_field: AgentFormField,
+    form_target_agent: Option<usize>,
+    agent_form_source: Option<Mode>,
+}
+
+#[derive(Debug, Default)]
+struct SelectionState {
+    selected_pane: usize,
+    selected_agent: usize,
+    focused_section: Section,
+    wizard_tab_idx: usize,
+    wizard_agent_idx: usize,
+}
+
+#[derive(Debug, Default)]
 pub struct Model {
-    pub permissions_granted: bool,
-    pub permissions_denied: bool,
-    pub agents: Vec<Agent>,
-    pub agent_panes: Vec<AgentPane>,
-    pub tab_names: Vec<String>,
-    pub status_message: String,
-    pub error_message: String,
-    pub selected_tab: usize,
-    pub selected_pane: usize,
-    pub selected_agent: usize,
-    pub focused_section: Section,
-    pub filter_text: String,
-    pub filter_active: bool,
-    pub mode: Mode,
-    pub agent_form_source: Option<Mode>,
-    pub quick_launch_agent_name: Option<String>,
-    pub workspace_input: String,
-    pub wizard_tab_idx: usize,
-    pub agent_name_input: String,
-    pub agent_command_input: String,
-    pub agent_env_input: String,
-    pub agent_note_input: String,
-    pub agent_form_field: AgentFormField,
-    pub wizard_agent_idx: usize,
-    pub form_target_agent: Option<usize>,
-    pub session_name: Option<String>,
+    permissions_granted: bool,
+    permissions_denied: bool,
+    agents: Vec<Agent>,
+    agent_panes: Vec<AgentPane>,
+    tab_names: Vec<String>,
+    status_message: String,
+    error_message: String,
+    mode: Mode,
+    quick_launch_agent_name: Option<String>,
+    workspace_input: String,
+    filter_text: String,
+    filter_active: bool,
+    session_name: Option<String>,
+    form: FormState,
+    selection: SelectionState,
+}
+
+impl Model {
+    pub fn agents(&self) -> &[Agent] {
+        &self.agents
+    }
+
+    pub fn agents_mut(&mut self) -> &mut Vec<Agent> {
+        &mut self.agents
+    }
+
+    pub fn agent_panes(&self) -> &[AgentPane] {
+        &self.agent_panes
+    }
+
+    pub fn agent_panes_mut(&mut self) -> &mut Vec<AgentPane> {
+        &mut self.agent_panes
+    }
+
+    pub fn tab_names(&self) -> &[String] {
+        &self.tab_names
+    }
+
+    pub fn tab_names_mut(&mut self) -> &mut Vec<String> {
+        &mut self.tab_names
+    }
+
+    pub fn status_message(&self) -> &str {
+        &self.status_message
+    }
+
+    pub fn error_message(&self) -> &str {
+        &self.error_message
+    }
+
+    pub fn selected_pane(&self) -> usize {
+        self.selection.selected_pane
+    }
+
+    pub fn selected_agent(&self) -> usize {
+        self.selection.selected_agent
+    }
+
+    pub fn focused_section(&self) -> Section {
+        self.selection.focused_section
+    }
+
+    pub fn filter_text(&self) -> &str {
+        &self.filter_text
+    }
+
+    pub fn filter_active(&self) -> bool {
+        self.filter_active
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    pub fn workspace_input(&self) -> &str {
+        &self.workspace_input
+    }
+
+    pub fn wizard_tab_idx(&self) -> usize {
+        self.selection.wizard_tab_idx
+    }
+
+    pub fn wizard_agent_idx(&self) -> usize {
+        self.selection.wizard_agent_idx
+    }
+
+    pub fn agent_name_input(&self) -> &str {
+        &self.form.agent_name_input
+    }
+
+    pub fn agent_command_input(&self) -> &str {
+        &self.form.agent_command_input
+    }
+
+    pub fn agent_env_input(&self) -> &str {
+        &self.form.agent_env_input
+    }
+
+    pub fn agent_note_input(&self) -> &str {
+        &self.form.agent_note_input
+    }
+
+    pub fn agent_form_field(&self) -> AgentFormField {
+        self.form.agent_form_field
+    }
+
+    pub fn form_target_agent(&self) -> Option<usize> {
+        self.form.form_target_agent
+    }
+
+    pub fn permissions_granted(&self) -> bool {
+        self.permissions_granted
+    }
+
+    pub fn permissions_denied(&self) -> bool {
+        self.permissions_denied
+    }
 }
 
 impl Model {
@@ -472,20 +583,20 @@ impl Model {
     fn start_new_pane_workspace(&mut self) {
         self.workspace_input.clear();
         self.mode = Mode::NewPaneWorkspace;
-        self.wizard_agent_idx = 0;
-        self.wizard_tab_idx = 0;
+        self.selection.wizard_agent_idx = 0;
+        self.selection.wizard_tab_idx = 0;
         self.reset_status();
     }
 
     fn start_agent_create(&mut self) {
         self.mode = Mode::AgentFormCreate;
-        self.agent_form_source = Some(Mode::View);
-        self.agent_name_input.clear();
-        self.agent_command_input.clear();
-        self.agent_env_input.clear();
-        self.agent_note_input.clear();
-        self.agent_form_field = AgentFormField::Name;
-        self.form_target_agent = None;
+        self.form.agent_form_source = Some(Mode::View);
+        self.form.agent_name_input.clear();
+        self.form.agent_command_input.clear();
+        self.form.agent_env_input.clear();
+        self.form.agent_note_input.clear();
+        self.form.agent_form_field = AgentFormField::Name;
+        self.form.form_target_agent = None;
         self.reset_status();
     }
 
@@ -494,11 +605,11 @@ impl Model {
             self.error_message = "no agents to edit".to_string();
             return;
         }
-        let idx = self.selected_agent.min(self.agents.len().saturating_sub(1));
+        let idx = self.selection.selected_agent.min(self.agents.len().saturating_sub(1));
         if let Some(agent) = self.agents.get(idx) {
-            self.agent_name_input = agent.name.clone();
-            self.agent_command_input = agent.command.join(" ");
-            self.agent_env_input = agent
+            self.form.agent_name_input = agent.name.clone();
+            self.form.agent_command_input = agent.command.join(" ");
+            self.form.agent_env_input = agent
                 .env
                 .as_ref()
                 .map(|m| {
@@ -508,10 +619,10 @@ impl Model {
                         .join(",")
                 })
                 .unwrap_or_default();
-            self.agent_note_input = agent.note.clone().unwrap_or_default();
-            self.agent_form_field = AgentFormField::Name;
-            self.form_target_agent = Some(idx);
-            self.agent_form_source = Some(Mode::View);
+            self.form.agent_note_input = agent.note.clone().unwrap_or_default();
+            self.form.agent_form_field = AgentFormField::Name;
+            self.form.form_target_agent = Some(idx);
+            self.form.agent_form_source = Some(Mode::View);
             self.mode = Mode::AgentFormEdit;
             self.reset_status();
         }
@@ -522,8 +633,8 @@ impl Model {
             self.error_message = "no agents to delete".to_string();
             return;
         }
-        let idx = self.selected_agent.min(self.agents.len().saturating_sub(1));
-        self.form_target_agent = Some(idx);
+        let idx = self.selection.selected_agent.min(self.agents.len().saturating_sub(1));
+        self.form.form_target_agent = Some(idx);
         self.mode = Mode::DeleteConfirm;
         self.reset_status();
     }
@@ -676,16 +787,16 @@ impl Model {
                 .count()
         };
         if pane_len == 0 {
-            self.selected_pane = 0;
-        } else if self.selected_pane >= pane_len {
-            self.selected_pane = pane_len.saturating_sub(1);
+            self.selection.selected_pane = 0;
+        } else if self.selection.selected_pane >= pane_len {
+            self.selection.selected_pane = pane_len.saturating_sub(1);
         }
 
         let agent_len = self.agents.len();
         if agent_len == 0 {
-            self.selected_agent = 0;
-        } else if self.selected_agent >= agent_len {
-            self.selected_agent = agent_len.saturating_sub(1);
+            self.selection.selected_agent = 0;
+        } else if self.selection.selected_agent >= agent_len {
+            self.selection.selected_agent = agent_len.saturating_sub(1);
         }
     }
 
@@ -704,9 +815,9 @@ impl Model {
                         })
                         .count()
                 };
-                (panes_len, self.selected_pane)
+                (panes_len, self.selection.selected_pane)
             }
-            Section::Agents => (self.agents.len(), self.selected_agent),
+            Section::Agents => (self.agents.len(), self.selection.selected_agent),
         };
         if len == 0 {
             return;
@@ -720,15 +831,15 @@ impl Model {
         }
         let next = next as usize;
         match section {
-            Section::AgentPanes => self.selected_pane = next,
-            Section::Agents => self.selected_agent = next,
+            Section::AgentPanes => self.selection.selected_pane = next,
+            Section::Agents => self.selection.selected_agent = next,
         }
         self.status_message.clear();
         self.error_message.clear();
     }
 
     fn focus_next_section(&mut self) {
-        self.focused_section = self.focused_section.next();
+        self.selection.focused_section = self.selection.focused_section.next();
         self.status_message.clear();
         self.error_message.clear();
         self.clamp_selections();
@@ -757,28 +868,28 @@ impl Model {
             match key.bare_key {
                 BareKey::Char(c) => {
                     self.filter_text.push(c);
-                    self.selected_pane = 0;
+                    self.selection.selected_pane = 0;
                     self.clamp_selections();
                     return;
                 }
                 BareKey::Up => {
-                    self.move_selection(self.focused_section, -1);
+                    self.move_selection(self.selection.focused_section, -1);
                     return;
                 }
                 BareKey::Down => {
-                    self.move_selection(self.focused_section, 1);
+                    self.move_selection(self.selection.focused_section, 1);
                     return;
                 }
                 BareKey::Backspace => {
                     self.filter_text.pop();
-                    self.selected_pane = 0;
+                    self.selection.selected_pane = 0;
                     self.clamp_selections();
                     return;
                 }
                 BareKey::Esc => {
                     self.filter_active = false;
                     self.filter_text.clear();
-                    self.selected_pane = 0;
+                    self.selection.selected_pane = 0;
                     self.clamp_selections();
                     return;
                 }
@@ -788,23 +899,23 @@ impl Model {
 
         match key.bare_key {
             BareKey::Char('j') | BareKey::Char('J') => {
-                self.move_selection(self.focused_section, 1);
+                self.move_selection(self.selection.focused_section, 1);
             }
             BareKey::Char('k') | BareKey::Char('K') => {
-                self.move_selection(self.focused_section, -1);
+                self.move_selection(self.selection.focused_section, -1);
             }
             BareKey::Tab => {
                 self.focus_next_section();
             }
-            BareKey::Enter => match self.focused_section {
+            BareKey::Enter => match self.selection.focused_section {
                 Section::AgentPanes => {
-                    let idx = self.selected_pane;
+                    let idx = self.selection.selected_pane;
                     self.focus_selected(idx);
 
                     close_self();
                 }
                 Section::Agents => {
-                    if self.selected_agent < self.agents.len() {
+                    if self.selection.selected_agent < self.agents.len() {
                         self.start_agent_edit();
                     }
                 }
@@ -813,37 +924,37 @@ impl Model {
                 close_self();
             }
             BareKey::Char('f') | BareKey::Char('F') => {
-                if self.focused_section == Section::AgentPanes {
+                if self.selection.focused_section == Section::AgentPanes {
                     self.filter_active = true;
                     self.filter_text.clear();
-                    self.selected_pane = 0;
+                    self.selection.selected_pane = 0;
                     self.clamp_selections();
                 }
             }
             BareKey::Char('x') | BareKey::Char('X') => {
-                if self.focused_section == Section::AgentPanes {
-                    let idx = self.selected_pane;
+                if self.selection.focused_section == Section::AgentPanes {
+                    let idx = self.selection.selected_pane;
                     self.kill_selected(idx);
                 }
             }
             BareKey::Char('e') | BareKey::Char('E') => {
-                if self.focused_section == Section::Agents {
-                    if self.selected_agent < self.agents.len() {
+                if self.selection.focused_section == Section::Agents {
+                    if self.selection.selected_agent < self.agents.len() {
                         self.start_agent_edit();
                     }
                 }
             }
             BareKey::Char('d') | BareKey::Char('D') => {
-                if self.focused_section == Section::Agents {
-                    if self.selected_agent < self.agents.len() {
+                if self.selection.focused_section == Section::Agents {
+                    if self.selection.selected_agent < self.agents.len() {
                         self.start_agent_delete_confirm();
                     }
                 }
             }
             BareKey::Char('n') | BareKey::Char('N') => {
-                if self.focused_section == Section::Agents {
-                    if self.selected_agent < self.agents.len() {
-                        let agent_name = self.agents[self.selected_agent].name.clone();
+                if self.selection.focused_section == Section::Agents {
+                    if self.selection.selected_agent < self.agents.len() {
+                        let agent_name = self.agents[self.selection.selected_agent].name.clone();
                         self.quick_launch_agent_name = Some(agent_name);
                         self.start_new_pane_workspace();
                     }
@@ -852,10 +963,10 @@ impl Model {
                 }
             }
             BareKey::Char('a') | BareKey::Char('A') => {
-                if self.focused_section == Section::Agents {
+                if self.selection.focused_section == Section::Agents {
                     self.start_agent_create();
                 } else {
-                    self.focused_section = Section::Agents;
+                    self.selection.focused_section = Section::Agents;
                     self.clamp_selections();
                 }
             }
@@ -870,15 +981,15 @@ impl Model {
         match key.bare_key {
             BareKey::Enter => {
                 self.mode = Mode::NewPaneTabSelect;
-                self.wizard_tab_idx = 0;
-                self.wizard_agent_idx = 0;
+                self.selection.wizard_tab_idx = 0;
+                self.selection.wizard_agent_idx = 0;
                 self.reset_status();
             }
             BareKey::Esc => self.cancel_to_view(),
             BareKey::Tab => {
                 self.mode = Mode::NewPaneTabSelect;
-                self.wizard_tab_idx = 0;
-                self.wizard_agent_idx = 0;
+                self.selection.wizard_tab_idx = 0;
+                self.selection.wizard_agent_idx = 0;
                 self.reset_status();
             }
             _ => {}
@@ -889,13 +1000,13 @@ impl Model {
         let choices = self.tab_names.len().saturating_add(1);
         match key.bare_key {
             BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
-                if self.wizard_tab_idx > 0 {
-                    self.wizard_tab_idx -= 1;
+                if self.selection.wizard_tab_idx > 0 {
+                    self.selection.wizard_tab_idx -= 1;
                 }
             }
             BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
-                if self.wizard_tab_idx + 1 < choices {
-                    self.wizard_tab_idx += 1;
+                if self.selection.wizard_tab_idx + 1 < choices {
+                    self.selection.wizard_tab_idx += 1;
                 }
             }
             BareKey::Enter => {
@@ -908,7 +1019,7 @@ impl Model {
                     }
                 } else {
                     self.mode = Mode::NewPaneAgentSelect;
-                    self.wizard_agent_idx = 0;
+                    self.selection.wizard_agent_idx = 0;
                 }
             }
             BareKey::Esc => self.cancel_to_view(),
@@ -921,18 +1032,18 @@ impl Model {
         let choices = self.agents.len().saturating_add(1);
         match key.bare_key {
             BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
-                if self.wizard_agent_idx > 0 {
-                    self.wizard_agent_idx -= 1;
+                if self.selection.wizard_agent_idx > 0 {
+                    self.selection.wizard_agent_idx -= 1;
                 }
             }
             BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
-                if self.wizard_agent_idx + 1 < choices {
-                    self.wizard_agent_idx += 1;
+                if self.selection.wizard_agent_idx + 1 < choices {
+                    self.selection.wizard_agent_idx += 1;
                 }
             }
             BareKey::Enter => {
-                if self.wizard_agent_idx < self.agents.len() {
-                    let agent = self.agents[self.wizard_agent_idx].name.clone();
+                if self.selection.wizard_agent_idx < self.agents.len() {
+                    let agent = self.agents[self.selection.wizard_agent_idx].name.clone();
                     let workspace = self.workspace_input.trim().to_string();
                     let tab_choice = selected_tab_choice(self);
                     self.spawn_agent_pane(workspace, agent, tab_choice);
@@ -941,12 +1052,12 @@ impl Model {
                     }
                 } else {
                     self.mode = Mode::NewPaneAgentCreate;
-                    self.agent_form_source = Some(Mode::NewPaneAgentSelect);
-                    self.agent_name_input.clear();
-                    self.agent_command_input.clear();
-                    self.agent_env_input.clear();
-                    self.agent_note_input.clear();
-                    self.agent_form_field = AgentFormField::Name;
+                    self.form.agent_form_source = Some(Mode::NewPaneAgentSelect);
+                    self.form.agent_name_input.clear();
+                    self.form.agent_command_input.clear();
+                    self.form.agent_env_input.clear();
+                    self.form.agent_note_input.clear();
+                    self.form.agent_form_field = AgentFormField::Name;
                     self.reset_status();
                 }
             }
@@ -964,10 +1075,10 @@ impl Model {
             key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
         match key.bare_key {
             BareKey::Tab if shift_tab => {
-                self.agent_form_field = prev_field(self.agent_form_field);
+                self.form.agent_form_field = prev_field(self.form.agent_form_field);
             }
             BareKey::Tab => {
-                self.agent_form_field = next_field(self.agent_form_field);
+                self.form.agent_form_field = next_field(self.form.agent_form_field);
             }
             BareKey::Enter => match self.build_agent_from_inputs() {
                 Ok(agent) => {
@@ -1005,7 +1116,7 @@ impl Model {
                 }
             },
             BareKey::Esc => {
-                self.agent_form_source = None;
+                self.form.agent_form_source = None;
                 self.cancel_to_view();
             }
             _ => {}
@@ -1015,11 +1126,11 @@ impl Model {
     fn handle_key_event_delete_confirm(&mut self, key: KeyWithModifier) {
         match key.bare_key {
             BareKey::Enter | BareKey::Char('y') | BareKey::Char('Y') => {
-                if let Some(idx) = self.form_target_agent.take() {
+                if let Some(idx) = self.form.form_target_agent.take() {
                     if idx < self.agents.len() {
                         self.agents.remove(idx);
-                        self.selected_agent =
-                            self.selected_agent.min(self.agents.len().saturating_sub(1));
+                        self.selection.selected_agent =
+                            self.selection.selected_agent.min(self.agents.len().saturating_sub(1));
                         match self.persist_agents() {
                             Ok(path) => {
                                 self.status_message =
@@ -1047,12 +1158,12 @@ impl Model {
             return Err("duplicate agent name".to_string());
         }
         self.agents.push(agent);
-        self.selected_agent = self.agents.len().saturating_sub(1);
+        self.selection.selected_agent = self.agents.len().saturating_sub(1);
         self.persist_agents()
     }
 
     fn apply_agent_edit(&mut self, agent: Agent) -> Result<PathBuf, String> {
-        if let Some(idx) = self.form_target_agent {
+        if let Some(idx) = self.form.form_target_agent {
             if idx < self.agents.len() {
                 if self
                     .agents
@@ -1063,7 +1174,7 @@ impl Model {
                     return Err("duplicate agent name".to_string());
                 }
                 self.agents[idx] = agent;
-                self.selected_agent = idx;
+                self.selection.selected_agent = idx;
                 return self.persist_agents();
             }
         }
@@ -1071,23 +1182,23 @@ impl Model {
     }
 
     fn build_agent_from_inputs(&self) -> Result<Agent, String> {
-        let name = self.agent_name_input.trim().to_string();
+        let name = self.form.agent_name_input.trim().to_string();
         if name.is_empty() {
             return Err("agent name required".to_string());
         }
         let cmd_parts: Vec<String> = self
-            .agent_command_input
+            .form.agent_command_input
             .split_whitespace()
             .map(|s| s.to_string())
             .collect();
         if cmd_parts.is_empty() {
             return Err("command required".to_string());
         }
-        let env = parse_env_input(&self.agent_env_input)?;
-        let note = if self.agent_note_input.trim().is_empty() {
+        let env = parse_env_input(&self.form.agent_env_input)?;
+        let note = if self.form.agent_note_input.trim().is_empty() {
             None
         } else {
-            Some(self.agent_note_input.trim().to_string())
+            Some(self.form.agent_note_input.trim().to_string())
         };
         Ok(Agent {
             name,
@@ -1102,7 +1213,7 @@ impl Model {
         save_agents(&path, &self.agents).map_err(|e| format!("save agents: {e}"))?;
         match load_agents(&path) {
             Ok(list) => {
-                self.agents = list;
+                *self.agents_mut() = list;
                 self.clamp_selections();
                 self.error_message.clear();
                 Ok(path)

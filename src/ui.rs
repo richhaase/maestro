@@ -93,12 +93,12 @@ pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out.push_str(&render_section_tabs(model, cols));
     out.push('\n');
 
-    if model.filter_active && model.focused_section == Section::AgentPanes {
+    if model.filter_active() && model.focused_section() == Section::AgentPanes {
         out.push_str(&render_filter(model, cols));
         out.push('\n');
     }
 
-    match model.focused_section {
+    match model.focused_section() {
         Section::AgentPanes => {
             out.push_str(&render_agent_panes(model, cols));
         }
@@ -120,7 +120,7 @@ fn render_section_tabs(model: &Model, _cols: usize) -> String {
     let mut ribbon_items = Vec::new();
     for section in [Section::AgentPanes, Section::Agents] {
         let label = section.label();
-        let is_active = model.focused_section == section;
+        let is_active = model.focused_section() == section;
         let text = if is_active {
             Text::new(label).selected()
         } else {
@@ -132,23 +132,23 @@ fn render_section_tabs(model: &Model, _cols: usize) -> String {
 }
 
 fn render_filter(model: &Model, _cols: usize) -> String {
-    let filter_prompt = if model.filter_text.is_empty() {
+    let filter_prompt = if model.filter_text().is_empty() {
         "Filter: (type to filter by agent name or tab)"
     } else {
         "Filter:"
     };
-    format!("{} {}", filter_prompt, model.filter_text)
+    format!("{} {}", filter_prompt, model.filter_text())
 }
 
 fn render_agent_panes(model: &Model, cols: usize) -> String {
-    let panes: Vec<&AgentPane> = if model.filter_text.is_empty() {
-        model.agent_panes.iter().collect()
+    let panes: Vec<&AgentPane> = if model.filter_text().is_empty() {
+        model.agent_panes().iter().collect()
     } else {
         let matcher = SkimMatcherV2::default();
-        let filter_text = &model.filter_text;
+        let filter_text = model.filter_text();
 
         model
-            .agent_panes
+            .agent_panes()
             .iter()
             .filter(|p| {
                 let status_text = match p.status {
@@ -187,7 +187,7 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             Text::new(status_text.to_string()).color_all(status_color),
         ];
 
-        if idx == model.selected_pane {
+        if idx == model.selected_pane() {
             row = row.into_iter().map(|t| t.selected()).collect();
         }
 
@@ -208,7 +208,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 
     let command_col_width = (cols as f32 * 0.50) as usize;
 
-    for (idx, agent) in model.agents.iter().enumerate() {
+    for (idx, agent) in model.agents().iter().enumerate() {
         let name = if agent.name.is_empty() {
             "(agent)"
         } else {
@@ -225,7 +225,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
             .unwrap_or("—");
 
         let row = vec![name.to_string(), command.to_string(), note.to_string()];
-        let styled = if idx == model.selected_agent {
+        let styled = if idx == model.selected_agent() {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
         } else {
             row.into_iter().map(Text::new).collect()
@@ -233,7 +233,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         table = table.add_styled_row(styled);
     }
 
-    if model.agents.is_empty() {
+    if model.agents().is_empty() {
         table = table.add_row(vec![
             "(no agents)".to_string(),
             "".to_string(),
@@ -245,17 +245,17 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 }
 
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
-    match model.mode {
+    match model.mode() {
         Mode::View => None,
         Mode::NewPaneWorkspace => Some(format!(
             "New Agent Pane: workspace path (optional)\n> {}_",
-            truncate(&model.workspace_input, cols.saturating_sub(2))
+            truncate(model.workspace_input(), cols.saturating_sub(2))
         )),
         Mode::NewPaneTabSelect => {
             let mut lines = Vec::new();
             lines.push("New Agent Pane: select tab".to_string());
-            for (idx, tab) in model.tab_names.iter().enumerate() {
-                let prefix = if idx == model.wizard_tab_idx {
+            for (idx, tab) in model.tab_names().iter().enumerate() {
+                let prefix = if idx == model.wizard_tab_idx() {
                     ">"
                 } else {
                     " "
@@ -266,21 +266,21 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                     truncate(tab, cols.saturating_sub(2))
                 ));
             }
-            let create_idx = model.tab_names.len();
-            let prefix = if model.wizard_tab_idx == create_idx {
+            let create_idx = model.tab_names().len();
+            let prefix = if model.wizard_tab_idx() == create_idx {
                 ">"
             } else {
                 " "
             };
-            let suggested = crate::utils::workspace_tab_name(&model.workspace_input);
+            let suggested = crate::utils::workspace_tab_name(model.workspace_input());
             lines.push(format!("{prefix} (new tab: {suggested})"));
             Some(lines.join("\n"))
         }
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
             lines.push("New Agent Pane: select agent or create new".to_string());
-            for (idx, agent) in model.agents.iter().enumerate() {
-                let prefix = if idx == model.wizard_agent_idx {
+            for (idx, agent) in model.agents().iter().enumerate() {
+                let prefix = if idx == model.wizard_agent_idx() {
                     ">"
                 } else {
                     " "
@@ -291,8 +291,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                     truncate(&agent.name, cols.saturating_sub(2))
                 ));
             }
-            let create_idx = model.agents.len();
-            let prefix = if model.wizard_agent_idx == create_idx {
+            let create_idx = model.agents().len();
+            let prefix = if model.wizard_agent_idx() == create_idx {
                 ">"
             } else {
                 " "
@@ -317,8 +317,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         )),
         Mode::DeleteConfirm => {
             let name = model
-                .form_target_agent
-                .and_then(|idx| model.agents.get(idx))
+                .form_target_agent()
+                .and_then(|idx| model.agents().get(idx))
                 .map(|a| a.name.as_str())
                 .unwrap_or("(unknown)");
             Some(format!(
@@ -340,38 +340,38 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
     };
     lines.push(mk(
         "Name",
-        &model.agent_name_input,
+        model.agent_name_input(),
         AgentFormField::Name,
-        model.agent_form_field,
+        model.agent_form_field(),
     ));
     lines.push(mk(
         "Command",
-        &model.agent_command_input,
+        model.agent_command_input(),
         AgentFormField::Command,
-        model.agent_form_field,
+        model.agent_form_field(),
     ));
     lines.push(mk(
         "Env",
-        &model.agent_env_input,
+        model.agent_env_input(),
         AgentFormField::Env,
-        model.agent_form_field,
+        model.agent_form_field(),
     ));
     lines.push(mk(
         "Note",
-        &model.agent_note_input,
+        model.agent_note_input(),
         AgentFormField::Note,
-        model.agent_form_field,
+        model.agent_form_field(),
     ));
     lines.join("\n")
 }
 
 fn render_status(model: &Model, cols: usize) -> String {
-    let hints = match model.mode {
+    let hints = match model.mode() {
         Mode::View => {
-            if model.filter_active {
+            if model.filter_active() {
                 "Filter mode: type to filter • ↑/↓ move • Esc exit filter"
             } else {
-                match model.focused_section {
+                match model.focused_section() {
                     Section::AgentPanes => "j/k move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
                     Section::Agents => "j/k move • Tab switch section • Enter/e edit • d delete • n launch • a create • Esc close",
                 }
@@ -384,12 +384,12 @@ fn render_status(model: &Model, cols: usize) -> String {
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };
-    let msg = if !model.error_message.is_empty() {
-        format!("ERROR: {}", model.error_message)
-    } else if model.status_message.is_empty() {
+    let msg = if !model.error_message().is_empty() {
+        format!("ERROR: {}", model.error_message())
+    } else if model.status_message().is_empty() {
         hints.to_string()
     } else {
-        format!("{} — {}", model.status_message, hints)
+        format!("{} — {}", model.status_message(), hints)
     };
     truncate(&msg, cols)
 }
