@@ -9,6 +9,7 @@ use zellij_tile::prelude::{
 
 use crate::agent::{Agent, AgentPane, PaneStatus};
 use crate::agent::{default_config_path, load_agents, save_agents};
+use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
 use crate::ui::{AgentFormField, Mode, Section, next_field, prev_field};
 use crate::utils::{build_command_with_env, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename, workspace_tab_name};
@@ -540,10 +541,10 @@ pub fn kill_selected(model: &mut Model, selected_idx: usize) {
     }
 }
 
-fn build_agent_from_inputs(model: &Model) -> Result<Agent, String> {
+fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     let name = model.agent_name_input().trim().to_string();
     if name.is_empty() {
-        return Err("agent name required".to_string());
+        return Err(MaestroError::AgentNameRequired);
     }
     let cmd_parts: Vec<String> = model
         .agent_command_input()
@@ -551,9 +552,10 @@ fn build_agent_from_inputs(model: &Model) -> Result<Agent, String> {
         .map(|s| s.to_string())
         .collect();
     if cmd_parts.is_empty() {
-        return Err("command required".to_string());
+        return Err(MaestroError::CommandRequired);
     }
-    let env = parse_env_input(model.agent_env_input())?;
+    let env = parse_env_input(model.agent_env_input())
+        .map_err(|e| MaestroError::EnvParse(e))?;
     let note = if model.agent_note_input().trim().is_empty() {
         None
     } else {
@@ -567,16 +569,16 @@ fn build_agent_from_inputs(model: &Model) -> Result<Agent, String> {
     })
 }
 
-fn apply_agent_create(model: &mut Model, agent: Agent) -> Result<PathBuf, String> {
+fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
     if model.agents().iter().any(|a| a.name == agent.name) {
-        return Err("duplicate agent name".to_string());
+        return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
     model.agents_mut().push(agent.clone());
     *model.selected_agent_mut() = model.agents().len().saturating_sub(1);
     persist_agents(model)
 }
 
-fn apply_agent_edit(model: &mut Model, agent: Agent) -> Result<PathBuf, String> {
+fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
     if let Some(idx) = model.form_target_agent() {
         if idx < model.agents().len() {
             if model
@@ -585,19 +587,19 @@ fn apply_agent_edit(model: &mut Model, agent: Agent) -> Result<PathBuf, String> 
                 .enumerate()
                 .any(|(i, a)| i != idx && a.name == agent.name)
             {
-                return Err("duplicate agent name".to_string());
+                return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
             model.agents_mut()[idx] = agent;
             *model.selected_agent_mut() = idx;
             return persist_agents(model);
         }
     }
-    Err("no agent selected".to_string())
+    Err(MaestroError::NoAgentSelected)
 }
 
-fn persist_agents(model: &mut Model) -> Result<PathBuf, String> {
-    let path = default_config_path().map_err(|e| format!("config path: {e}"))?;
-    save_agents(&path, model.agents()).map_err(|e| format!("save agents: {e}"))?;
+fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
+    let path = default_config_path()?;
+    save_agents(&path, model.agents())?;
     match load_agents(&path) {
         Ok(list) => {
             *model.agents_mut() = list;
@@ -605,7 +607,7 @@ fn persist_agents(model: &mut Model) -> Result<PathBuf, String> {
             model.error_message_mut().clear();
             Ok(path)
         }
-        Err(err) => Err(format!("reload agents: {err}")),
+        Err(err) => Err(MaestroError::Config(err)),
     }
 }
 
@@ -852,7 +854,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_a
                     Mode::AgentFormCreate | Mode::NewPaneAgentCreate => {
                         apply_agent_create(model, agent.clone())
                     }
-                    _ => Err("invalid mode".to_string()),
+                    _ => Err(MaestroError::InvalidMode),
                 };
                 match result {
                     Ok(saved_path) => {
@@ -868,12 +870,12 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_a
                         }
                     }
                     Err(err) => {
-                        *model.error_message_mut() = err;
+                        *model.error_message_mut() = err.to_string();
                     }
                 }
             }
             Err(err) => {
-                *model.error_message_mut() = err;
+                *model.error_message_mut() = err.to_string();
             }
         },
         BareKey::Esc => {
@@ -899,7 +901,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                             model.error_message_mut().clear();
                         }
                         Err(err) => {
-                            *model.error_message_mut() = err;
+                            *model.error_message_mut() = err.to_string();
                         }
                     }
                 }

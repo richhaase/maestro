@@ -22,6 +22,7 @@ kdl = "4"
 uuid = { version = "1", features = ["v4"] }
 zellij-tile = "0.43.1"
 fuzzy-matcher = "0.3"
+thiserror = "1"
 
 [profile.release]
 lto = true
