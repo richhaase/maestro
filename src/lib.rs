@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod handlers;
 pub mod model;
 pub mod ui;
 pub mod utils;

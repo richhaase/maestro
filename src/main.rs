@@ -3,6 +3,11 @@ use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
 
 use maestro::agent::load_agents_default;
+use maestro::handlers::{
+    apply_pane_update, apply_tab_update, handle_command_pane_exited, handle_command_pane_opened,
+    handle_command_pane_rerun, handle_key_event, handle_pane_closed, handle_permission_result,
+    handle_session_update,
+};
 use maestro::model::Model;
 use maestro::ui::render_ui;
 
@@ -58,40 +63,39 @@ impl ZellijPlugin for Maestro {
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::PermissionRequestResult(status) => {
-                self.model.handle_permission_result(status);
+                handle_permission_result(&mut self.model, status);
                 true
             }
             Event::TabUpdate(tabs) => {
-                self.model.apply_tab_update(tabs);
+                apply_tab_update(&mut self.model, tabs);
                 true
             }
             Event::PaneUpdate(manifest) => {
-                self.model.apply_pane_update(manifest);
+                apply_pane_update(&mut self.model, manifest);
                 true
             }
             Event::SessionUpdate(session_info, _resurrectable) => {
-                self.model.handle_session_update(session_info);
+                handle_session_update(&mut self.model, session_info);
                 true
             }
             Event::CommandPaneOpened(pane_id, ctx) => {
-                self.model.handle_command_pane_opened(pane_id, ctx);
+                handle_command_pane_opened(&mut self.model, pane_id, ctx);
                 true
             }
             Event::CommandPaneExited(pane_id, exit_status, ctx) => {
-                self.model
-                    .handle_command_pane_exited(pane_id, exit_status, ctx);
+                handle_command_pane_exited(&mut self.model, pane_id, exit_status, ctx);
                 true
             }
             Event::CommandPaneReRun(pane_id, ctx) => {
-                self.model.handle_command_pane_rerun(pane_id, ctx);
+                handle_command_pane_rerun(&mut self.model, pane_id, ctx);
                 true
             }
             Event::PaneClosed(pane_id) => {
-                self.model.handle_pane_closed(pane_id);
+                handle_pane_closed(&mut self.model, pane_id);
                 true
             }
             Event::Key(key) => {
-                self.model.handle_key_event(key);
+                handle_key_event(&mut self.model, key);
                 true
             }
             Event::BeforeClose => true,
