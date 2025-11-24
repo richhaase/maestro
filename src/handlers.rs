@@ -8,11 +8,11 @@ use zellij_tile::prelude::{
 };
 
 use crate::agent::{Agent, AgentPane, PaneStatus};
-use crate::agent::{default_config_path, load_agents, save_agents};
+use crate::agent::{default_config_path, is_default_agent, save_agents};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
 use crate::ui::{AgentFormField, Mode, Section, next_field, prev_field};
-use crate::utils::{build_command_with_env, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename, workspace_tab_name};
+use crate::utils::{build_command_with_env, find_agent_by_command, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename, workspace_tab_name};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TabChoice {
@@ -124,18 +124,8 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
             }
 
             if !pane.is_plugin {
-                let title_base = title.split(" - ").next().unwrap_or(&title).trim();
-                if model
-                    .agents()
-                    .iter()
-                    .any(|a| a.name.eq_ignore_ascii_case(title_base))
-                {
-                    let agent_name = model
-                        .agents()
-                        .iter()
-                        .find(|a| a.name.eq_ignore_ascii_case(title_base))
-                        .map(|a| a.name.clone())
-                        .unwrap_or_else(|| title_base.to_string());
+                if let Some(agent) = find_agent_by_command(model.agents(), &title) {
+                    let agent_name = agent.name.clone();
                     let reconstructed_title = format!("maestro:{agent_name}::recovered");
                     model.agent_panes_mut().push(AgentPane {
                         pane_title: reconstructed_title,
@@ -293,19 +283,8 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                 }
 
                 if !pane.is_plugin {
-                    let title_base =
-                        pane.title.split(" - ").next().unwrap_or(&pane.title).trim();
-                    if model
-                        .agents()
-                        .iter()
-                        .any(|a| a.name.eq_ignore_ascii_case(title_base))
-                    {
-                        let agent_name = model
-                            .agents()
-                            .iter()
-                            .find(|a| a.name.eq_ignore_ascii_case(title_base))
-                            .map(|a| a.name.clone())
-                            .unwrap_or_else(|| title_base.to_string());
+                    if let Some(agent) = find_agent_by_command(model.agents(), &pane.title) {
+                        let agent_name = agent.name.clone();
                         let reconstructed_title = format!("maestro:{agent_name}::recovered");
                         model.agent_panes_mut().push(AgentPane {
                             pane_title: reconstructed_title,
@@ -568,8 +547,14 @@ fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
 
 fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
     let path = default_config_path()?;
-    save_agents(&path, model.agents())?;
-    match load_agents(&path) {
+    let user_agents: Vec<_> = model
+        .agents()
+        .iter()
+        .filter(|a| !is_default_agent(&a.name))
+        .cloned()
+        .collect();
+    save_agents(&path, &user_agents)?;
+    match crate::agent::load_agents_default() {
         Ok(list) => {
             *model.agents_mut() = list;
             model.clamp_selections();
@@ -1103,6 +1088,13 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
         BareKey::Enter | BareKey::Char('y') | BareKey::Char('Y') => {
             if let Some(idx) = model.form_target_agent_mut().take() {
                 if idx < model.agents().len() {
+                    let agent_name = model.agents()[idx].name.clone();
+                    if is_default_agent(&agent_name) {
+                        *model.error_message_mut() =
+                            format!("Cannot delete default agent: {agent_name}");
+                        *model.mode_mut() = Mode::View;
+                        return;
+                    }
                     model.agents_mut().remove(idx);
                     *model.selected_agent_mut() =
                         model.selected_agent().min(model.agents().len().saturating_sub(1));

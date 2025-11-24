@@ -107,6 +107,19 @@ pub fn parse_title_hint(title: &str) -> Option<(String, String)> {
     Some((agent, workspace_hint))
 }
 
+/// Find an agent by matching the pane title to the agent's command
+pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
+    let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
+    agents.iter().find(|agent| {
+        if agent.command.is_empty() {
+            return false;
+        }
+        let first_cmd = &agent.command[0];
+        first_cmd.eq_ignore_ascii_case(title_base)
+            || title_base.eq_ignore_ascii_case(&agent.name)
+    })
+}
+
 /// Parse environment variable input string into a map
 pub fn parse_env_input(input: &str) -> Result<Option<BTreeMap<String, String>>, String> {
     let trimmed = input.trim();
@@ -225,6 +238,46 @@ mod tests {
         );
         assert_eq!(parse_title_hint("maestro:agent"), None);
         assert_eq!(parse_title_hint("not-maestro"), None);
+    }
+
+    #[test]
+    fn test_find_agent_by_command() {
+        let agents = vec![
+            Agent {
+                name: "cursor".to_string(),
+                command: vec!["cursor-agent".to_string()],
+                env: None,
+                note: None,
+            },
+            Agent {
+                name: "claude".to_string(),
+                command: vec!["claude".to_string()],
+                env: None,
+                note: None,
+            },
+            Agent {
+                name: "custom".to_string(),
+                command: vec!["my-cmd".to_string(), "arg1".to_string()],
+                env: None,
+                note: None,
+            },
+        ];
+
+        assert_eq!(
+            find_agent_by_command(&agents, "cursor-agent"),
+            Some(&agents[0])
+        );
+        assert_eq!(
+            find_agent_by_command(&agents, "cursor-agent - some suffix"),
+            Some(&agents[0])
+        );
+        assert_eq!(find_agent_by_command(&agents, "claude"), Some(&agents[1]));
+        assert_eq!(find_agent_by_command(&agents, "my-cmd"), Some(&agents[2]));
+        assert_eq!(find_agent_by_command(&agents, "unknown"), None);
+        assert_eq!(
+            find_agent_by_command(&agents, "cursor"),
+            Some(&agents[0])
+        );
     }
 
     #[test]

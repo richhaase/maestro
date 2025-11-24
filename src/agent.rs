@@ -80,14 +80,70 @@ pub fn default_config_path() -> Result<PathBuf> {
     Ok(base.join("agents.kdl"))
 }
 
+pub fn default_agents() -> Vec<Agent> {
+    vec![
+        Agent {
+            name: "cursor".to_string(),
+            command: vec!["cursor-agent".to_string()],
+            env: None,
+            note: Some("Default agent config".to_string()),
+        },
+        Agent {
+            name: "claude".to_string(),
+            command: vec!["claude".to_string()],
+            env: None,
+            note: Some("Default agent config".to_string()),
+        },
+        Agent {
+            name: "gemini".to_string(),
+            command: vec!["gemini".to_string()],
+            env: None,
+            note: Some("Default agent config".to_string()),
+        },
+        Agent {
+            name: "codex".to_string(),
+            command: vec!["codex".to_string()],
+            env: None,
+            note: Some("Default agent config".to_string()),
+        },
+    ]
+}
+
+pub fn is_default_agent(name: &str) -> bool {
+    matches!(name.trim(), "cursor" | "claude" | "gemini" | "codex")
+}
+
 pub fn load_agents_default() -> Result<Vec<Agent>> {
     let path = default_config_path()?;
-    load_agents(&path)
+    let user_agents = load_agents(&path)?;
+    
+    let mut merged = default_agents();
+    let default_names: std::collections::BTreeSet<String> = merged
+        .iter()
+        .map(|a| a.name.clone())
+        .collect();
+    
+    for user_agent in user_agents {
+        if default_names.contains(&user_agent.name) {
+            if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
+                merged[pos] = user_agent;
+            }
+        } else {
+            merged.push(user_agent);
+        }
+    }
+    
+    Ok(merged)
 }
 
 pub fn save_agents_default(agents: &[Agent]) -> Result<()> {
     let path = default_config_path()?;
-    save_agents(&path, agents)
+    let user_agents: Vec<Agent> = agents
+        .iter()
+        .filter(|a| !is_default_agent(&a.name))
+        .cloned()
+        .collect();
+    save_agents(&path, &user_agents)
 }
 
 fn validate_agents(agents: &[Agent]) -> Result<()> {
@@ -375,5 +431,111 @@ agent name="duplicate" {
         let path = default_config_path().unwrap();
         assert!(path.to_string_lossy().ends_with("agents.kdl"));
         assert!(path.to_string_lossy().contains("/host"));
+    }
+
+    #[test]
+    fn test_default_agents() {
+        let defaults = default_agents();
+        assert_eq!(defaults.len(), 4);
+        let names: Vec<&str> = defaults.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"cursor"));
+        assert!(names.contains(&"claude"));
+        assert!(names.contains(&"gemini"));
+        assert!(names.contains(&"codex"));
+    }
+
+    #[test]
+    fn test_is_default_agent() {
+        assert!(is_default_agent("cursor"));
+        assert!(is_default_agent("claude"));
+        assert!(is_default_agent("gemini"));
+        assert!(is_default_agent("codex"));
+        assert!(!is_default_agent("custom"));
+        assert!(!is_default_agent(""));
+        assert!(is_default_agent("  cursor  "));
+    }
+
+    #[test]
+    fn test_load_agents_default_merges_with_user_agents() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let user_agents = vec![
+            Agent {
+                name: "custom".to_string(),
+                command: vec!["custom-cmd".to_string()],
+                env: None,
+                note: None,
+            },
+            Agent {
+                name: "cursor".to_string(),
+                command: vec!["custom-cursor".to_string()],
+                env: None,
+                note: None,
+            },
+        ];
+
+        save_agents(path, &user_agents).unwrap();
+        
+        let loaded = load_agents(path).unwrap();
+        assert_eq!(loaded.len(), 2);
+        
+        let defaults = default_agents();
+        let mut merged = defaults.clone();
+        let default_names: std::collections::BTreeSet<String> = merged
+            .iter()
+            .map(|a| a.name.clone())
+            .collect();
+        
+        for user_agent in loaded {
+            if default_names.contains(&user_agent.name) {
+                if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
+                    merged[pos] = user_agent;
+                }
+            } else {
+                merged.push(user_agent);
+            }
+        }
+        
+        assert_eq!(merged.len(), 5);
+        let cursor_agent = merged.iter().find(|a| a.name == "cursor").unwrap();
+        assert_eq!(cursor_agent.command, vec!["custom-cursor"]);
+        assert!(merged.iter().any(|a| a.name == "custom"));
+        assert!(merged.iter().any(|a| a.name == "claude"));
+        assert!(merged.iter().any(|a| a.name == "gemini"));
+        assert!(merged.iter().any(|a| a.name == "codex"));
+    }
+
+    #[test]
+    fn test_save_agents_default_filters_out_defaults() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let all_agents = vec![
+            Agent {
+                name: "cursor".to_string(),
+                command: vec!["cursor-agent".to_string()],
+                env: None,
+                note: None,
+            },
+            Agent {
+                name: "custom".to_string(),
+                command: vec!["custom-cmd".to_string()],
+                env: None,
+                note: None,
+            },
+        ];
+
+        let user_agents: Vec<Agent> = all_agents
+            .iter()
+            .filter(|a| !is_default_agent(&a.name))
+            .cloned()
+            .collect();
+        
+        save_agents(path, &user_agents).unwrap();
+        
+        let saved = load_agents(path).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].name, "custom");
     }
 }
