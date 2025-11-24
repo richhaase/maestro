@@ -95,13 +95,13 @@ fn validate_agents(agents: &[Agent]) -> Result<()> {
     for (idx, agent) in agents.iter().enumerate() {
         let name = agent.name.trim();
         if name.is_empty() {
-            bail!("agent {}: name is required", idx);
+            bail!("agent {idx}: name is required");
         }
         if agent.command.is_empty() {
-            bail!("agent {} ({}): command is required", idx, name);
+            bail!("agent {idx} ({name}): command is required");
         }
         if !seen.insert(name.to_string()) {
-            bail!("duplicate agent name: {}", name);
+            bail!("duplicate agent name: {name}");
         }
     }
     Ok(())

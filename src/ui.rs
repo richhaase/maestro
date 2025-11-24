@@ -6,16 +6,11 @@ use crate::agent::{AgentPane, PaneStatus};
 use crate::model::Model;
 use crate::utils::truncate;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
+    #[default]
     AgentPanes,
     Agents,
-}
-
-impl Default for Section {
-    fn default() -> Self {
-        Section::AgentPanes
-    }
 }
 
 impl Section {
@@ -34,8 +29,9 @@ impl Section {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
+    #[default]
     View,
     NewPaneWorkspace,
     NewPaneTabSelect,
@@ -46,24 +42,13 @@ pub enum Mode {
     DeleteConfirm,
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::View
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AgentFormField {
+    #[default]
     Name,
     Command,
     Env,
     Note,
-}
-
-impl Default for AgentFormField {
-    fn default() -> Self {
-        AgentFormField::Name
-    }
 }
 
 /// Get the next field in the form navigation cycle
@@ -89,15 +74,13 @@ pub fn prev_field(current: AgentFormField) -> AgentFormField {
 /// Render the main UI
 pub fn render_permissions_denied(rows: usize, cols: usize) -> String {
     format!(
-        "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {}x{}",
-        cols, rows
+        "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {cols}x{rows}"
     )
 }
 
 pub fn render_permissions_requesting(rows: usize, cols: usize) -> String {
     format!(
-        "Maestro requesting permissions...\nViewport: {}x{}",
-        cols, rows
+        "Maestro requesting permissions...\nViewport: {cols}x{rows}"
     )
 }
 
@@ -233,8 +216,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 
         let note = agent
             .note
-            .as_ref()
-            .map(|n| n.as_str())
+            .as_deref()
             .filter(|n| !n.is_empty())
             .unwrap_or("—");
 

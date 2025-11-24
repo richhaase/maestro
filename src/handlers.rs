@@ -48,38 +48,10 @@ fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
 
 fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
     match model.agent_form_field() {
-        AgentFormField::Name => {
-            let mut input = model.agent_name_input().to_string();
-            let result = handle_text_edit(&mut input, key);
-            if result {
-                *model.agent_name_input_mut() = input;
-            }
-            result
-        }
-        AgentFormField::Command => {
-            let mut input = model.agent_command_input().to_string();
-            let result = handle_text_edit(&mut input, key);
-            if result {
-                *model.agent_command_input_mut() = input;
-            }
-            result
-        }
-        AgentFormField::Env => {
-            let mut input = model.agent_env_input().to_string();
-            let result = handle_text_edit(&mut input, key);
-            if result {
-                *model.agent_env_input_mut() = input;
-            }
-            result
-        }
-        AgentFormField::Note => {
-            let mut input = model.agent_note_input().to_string();
-            let result = handle_text_edit(&mut input, key);
-            if result {
-                *model.agent_note_input_mut() = input;
-            }
-            result
-        }
+        AgentFormField::Name => handle_text_edit(model.agent_name_input_mut(), key),
+        AgentFormField::Command => handle_text_edit(model.agent_command_input_mut(), key),
+        AgentFormField::Env => handle_text_edit(model.agent_env_input_mut(), key),
+        AgentFormField::Note => handle_text_edit(model.agent_note_input_mut(), key),
     }
 }
 
@@ -98,10 +70,11 @@ pub fn handle_permission_result(model: &mut Model, status: PermissionStatus) {
 
 pub fn apply_tab_update(model: &mut Model, tabs: Vec<TabInfo>) {
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
+    let tab_names_ref = &tab_names;
     *model.tab_names_mut() = tab_names.clone();
-
+    
     model.agent_panes_mut()
-        .retain(|p| p.pane_id.is_some() || tab_names.contains(&p.tab_name));
+        .retain(|p| p.pane_id.is_some() || tab_names_ref.contains(&p.tab_name));
     model.clamp_selections();
 }
 
@@ -116,12 +89,11 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
                 .iter_mut()
                 .find(|p| p.pane_id == Some(pane.id))
             {
-                if existing.tab_name.is_empty()
-                    || (!tab_name.is_empty() && !tab_names_ref.contains(&existing.tab_name))
+                if (existing.tab_name.is_empty()
+                    || (!tab_name.is_empty() && !tab_names_ref.contains(&existing.tab_name)))
+                    && !tab_name.is_empty()
                 {
-                    if !tab_name.is_empty() {
-                        existing.tab_name = tab_name.clone();
-                    }
+                    existing.tab_name = tab_name.clone();
                 }
                 existing.status = if pane.exited {
                     PaneStatus::Exited(pane.exit_status)
@@ -135,7 +107,6 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
 
             if is_maestro_tab(&title) {
                 let (agent_name, workspace_path) = parse_title_hint(&title)
-                    .map(|(a, w)| (a, w))
                     .unwrap_or_default();
                 model.agent_panes_mut().push(AgentPane {
                     pane_title: title,
@@ -165,7 +136,7 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
                         .find(|a| a.name.eq_ignore_ascii_case(title_base))
                         .map(|a| a.name.clone())
                         .unwrap_or_else(|| title_base.to_string());
-                    let reconstructed_title = format!("maestro:{}::recovered", agent_name);
+                    let reconstructed_title = format!("maestro:{agent_name}::recovered");
                     model.agent_panes_mut().push(AgentPane {
                         pane_title: reconstructed_title,
                         tab_name: tab_name.clone(),
@@ -189,7 +160,7 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{}", pane_id));
+        .unwrap_or_else(|| format!("maestro:{pane_id}"));
     let workspace_path = ctx.get("cwd").cloned().unwrap_or_default();
     let agent_name = ctx.get("agent").cloned().unwrap_or_default();
 
@@ -279,20 +250,18 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                             PaneStatus::Running
                         };
 
-                        if existing.tab_name.is_empty()
+                        if (existing.tab_name.is_empty()
                             || (!tab_name.is_empty()
-                                && !tab_names_ref.contains(&existing.tab_name))
+                                && !tab_names_ref.contains(&existing.tab_name)))
+                            && !tab_name.is_empty()
                         {
-                            if !tab_name.is_empty() {
-                                existing.tab_name = tab_name.clone();
-                            }
+                            existing.tab_name = tab_name.clone();
                         }
                     continue;
                 }
 
                 if is_maestro_tab(&pane.title) {
                     let (agent_name, workspace_path) = parse_title_hint(&pane.title)
-                        .map(|(a, w)| (a, w))
                         .unwrap_or_default();
                     model.agent_panes_mut().push(AgentPane {
                         pane_title: pane.title.clone(),
@@ -337,7 +306,7 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                             .find(|a| a.name.eq_ignore_ascii_case(title_base))
                             .map(|a| a.name.clone())
                             .unwrap_or_else(|| title_base.to_string());
-                        let reconstructed_title = format!("maestro:{}::recovered", agent_name);
+                        let reconstructed_title = format!("maestro:{agent_name}::recovered");
                         model.agent_panes_mut().push(AgentPane {
                             pane_title: reconstructed_title,
                             tab_name: tab_name.clone(),
@@ -367,7 +336,7 @@ pub fn handle_command_pane_exited(
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{}", pane_id));
+        .unwrap_or_else(|| format!("maestro:{pane_id}"));
     if let Some(pane) = model
         .agent_panes_mut()
         .iter_mut()
@@ -382,7 +351,7 @@ pub fn handle_command_pane_rerun(model: &mut Model, pane_id: u32, ctx: BTreeMap<
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{}", pane_id));
+        .unwrap_or_else(|| format!("maestro:{pane_id}"));
     if let Some(pane) = model
         .agent_panes_mut()
         .iter_mut()
@@ -555,7 +524,7 @@ fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
         return Err(MaestroError::CommandRequired);
     }
     let env = parse_env_input(model.agent_env_input())
-        .map_err(|e| MaestroError::EnvParse(e))?;
+        .map_err(MaestroError::EnvParse)?;
     let note = if model.agent_note_input().trim().is_empty() {
         None
     } else {
@@ -948,17 +917,17 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
             }
         }
         BareKey::Char('e') | BareKey::Char('E') => {
-            if model.focused_section() == Section::Agents {
-                if model.selected_agent() < model.agents().len() {
-                    start_agent_edit(model);
-                }
+            if model.focused_section() == Section::Agents
+                && model.selected_agent() < model.agents().len()
+            {
+                start_agent_edit(model);
             }
         }
         BareKey::Char('d') | BareKey::Char('D') => {
-            if model.focused_section() == Section::Agents {
-                if model.selected_agent() < model.agents().len() {
-                    start_agent_delete_confirm(model);
-                }
+            if model.focused_section() == Section::Agents
+                && model.selected_agent() < model.agents().len()
+            {
+                start_agent_delete_confirm(model);
             }
         }
         BareKey::Char('n') | BareKey::Char('N') => {

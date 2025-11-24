@@ -53,7 +53,7 @@ pub fn truncate_path(path: &str, max: usize) -> String {
 
     let take_from_end = max - ellipsis_len;
     let end: String = chars.iter().rev().take(take_from_end).rev().collect();
-    format!("{}{}", ellipsis, end)
+    format!("{ellipsis}{end}")
 }
 
 /// Build command with environment variables as prefix arguments
@@ -61,7 +61,7 @@ pub fn build_command_with_env(agent: &Agent) -> Vec<String> {
     let mut parts = Vec::new();
     if let Some(env) = &agent.env {
         for (k, v) in env {
-            parts.push(format!("{}={}", k, v));
+            parts.push(format!("{k}={v}"));
         }
     }
     parts.extend(agent.command.clone());

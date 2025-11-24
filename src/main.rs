@@ -21,16 +21,9 @@ const REQUESTED_PERMISSIONS: &[PermissionType] = &[
 ];
 
 
+#[derive(Default)]
 pub struct Maestro {
     model: Model,
-}
-
-impl Default for Maestro {
-    fn default() -> Self {
-        Maestro {
-            model: Model::default(),
-        }
-    }
 }
 
 
