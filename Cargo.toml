@@ -6,6 +6,14 @@ license = "MIT OR Apache-2.0"
 description = "Maestro Zellij plugin (ground-up, Zellij-only)"
 readme = "README.md"
 
+[lib]
+test = true
+
+[[bin]]
+name = "maestro"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

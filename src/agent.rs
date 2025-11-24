@@ -33,7 +33,6 @@ pub struct AgentPane {
 }
 
 impl Agent {
-    /// Validates that the agent has required fields
     pub fn validate(&self) -> Result<()> {
         let name = self.name.trim();
         if name.is_empty() {
@@ -46,7 +45,6 @@ impl Agent {
     }
 }
 
-/// Load agents from a KDL file at the given path
 pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
     let data = match fs::read_to_string(path) {
         Ok(s) => s,
@@ -70,7 +68,6 @@ pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
     Ok(agents)
 }
 
-/// Save agents to a KDL file at the given path
 pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
     validate_agents(agents)?;
     let payload = agents_to_kdl(agents).context("serialize agents")?;
@@ -78,19 +75,16 @@ pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
     Ok(())
 }
 
-/// Get the default config path for agents
 pub fn default_config_path() -> Result<PathBuf> {
     let base = config_base_dir()?;
     Ok(base.join("agents.kdl"))
 }
 
-/// Load agents from the default config path
 pub fn load_agents_default() -> Result<Vec<Agent>> {
     let path = default_config_path()?;
     load_agents(&path)
 }
 
-/// Save agents to the default config path
 pub fn save_agents_default(agents: &[Agent]) -> Result<()> {
     let path = default_config_path()?;
     save_agents(&path, agents)
@@ -288,5 +282,98 @@ mod tests {
         ];
 
         assert!(validate_agents(&agents).is_err());
+    }
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+        // Delete the file so it doesn't exist
+        std::fs::remove_file(path).unwrap();
+
+        let agents = load_agents(path).unwrap();
+        assert!(agents.is_empty());
+    }
+
+    #[test]
+    fn test_save_and_load_with_all_fields() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let agents = vec![Agent {
+            name: "full_agent".to_string(),
+            command: vec!["cmd".to_string(), "arg1".to_string(), "arg2".to_string()],
+            env: Some({
+                let mut m = BTreeMap::new();
+                m.insert("KEY1".to_string(), "value1".to_string());
+                m.insert("KEY2".to_string(), "value2".to_string());
+                m
+            }),
+            note: Some("A test agent with all fields".to_string()),
+        }];
+
+        save_agents(path, &agents).unwrap();
+        let loaded = load_agents(path).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "full_agent");
+        assert_eq!(loaded[0].command, vec!["cmd", "arg1", "arg2"]);
+        assert_eq!(loaded[0].env.as_ref().unwrap().len(), 2);
+        assert_eq!(loaded[0].note, Some("A test agent with all fields".to_string()));
+    }
+
+    #[test]
+    fn test_save_and_load_empty_agents() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let agents: Vec<Agent> = vec![];
+
+        save_agents(path, &agents).unwrap();
+        let loaded = load_agents(path).unwrap();
+
+        assert!(loaded.is_empty());
+    }
+
+    #[test]
+    fn test_save_agents_validates_before_saving() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("agents.kdl");
+
+        let invalid_agents = vec![Agent {
+            name: "".to_string(),
+            command: vec!["cmd".to_string()],
+            env: None,
+            note: None,
+        }];
+
+        assert!(save_agents(&path, &invalid_agents).is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_load_agents_validates_on_load() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Write invalid KDL with duplicate agent names
+        let invalid_kdl = r#"
+agent name="duplicate" {
+    cmd "cmd1"
+}
+agent name="duplicate" {
+    cmd "cmd2"
+}
+"#;
+        std::fs::write(path, invalid_kdl).unwrap();
+
+        assert!(load_agents(path).is_err());
+    }
+
+    #[test]
+    fn test_default_config_path() {
+        let path = default_config_path().unwrap();
+        assert!(path.to_string_lossy().ends_with("agents.kdl"));
+        assert!(path.to_string_lossy().contains("/host"));
     }
 }

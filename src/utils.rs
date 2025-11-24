@@ -144,16 +144,12 @@ mod tests {
 
     #[test]
     fn test_truncate_path() {
-        // Test empty path
         assert_eq!(truncate_path("", 10), "—");
-
-        // Test short path
         assert_eq!(truncate_path("/short/path", 20), "/short/path");
 
-        // Test long path truncation
         let long_path = "/very/long/path/that/exceeds/max/length";
         let result = truncate_path(long_path, 20);
-        assert!(result.len() <= 20);
+        assert!(result.chars().count() <= 20);
         assert!(result.starts_with('…'));
     }
 
