@@ -199,24 +199,6 @@ pub fn get_home_directory() -> PathBuf {
     PathBuf::from("/host")
 }
 
-/// Convert a /host path to an absolute filesystem path
-/// If path starts with /host, replaces it with actual home directory
-/// Otherwise returns path as-is
-pub fn resolve_host_path(path: &str) -> PathBuf {
-    let trimmed = path.trim();
-    if trimmed.starts_with("/host") {
-        let home = get_home_directory();
-        let relative = trimmed.strip_prefix("/host").unwrap_or("").trim_start_matches('/');
-        if relative.is_empty() {
-            home
-        } else {
-            home.join(relative)
-        }
-    } else {
-        PathBuf::from(trimmed)
-    }
-}
-
 /// Resolve a workspace path for Zellij API calls
 /// Converts /host paths to relative paths (since Zellij cwd is home directory)
 /// Empty path returns None (Zellij will use default cwd)
@@ -238,11 +220,6 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     } else {
         Some(PathBuf::from(trimmed))
     }
-}
-
-/// Generate a tab name from a workspace path (deprecated, use default_tab_name)
-pub fn workspace_tab_name(path: &str) -> String {
-    default_tab_name(path)
 }
 
 /// Check if a pane title is a Maestro-managed pane
@@ -363,13 +340,6 @@ mod tests {
         assert_eq!(workspace_basename("/path/to/workspace"), "workspace");
         assert_eq!(workspace_basename("workspace"), "workspace");
         assert_eq!(workspace_basename(""), "");
-    }
-
-    #[test]
-    fn test_workspace_tab_name() {
-        let name1 = workspace_tab_name("/path/to/workspace");
-        assert_eq!(name1, "maestro:workspace");
-        assert_eq!(workspace_tab_name(""), "maestro:workspace");
     }
 
     #[test]
