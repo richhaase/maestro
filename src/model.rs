@@ -20,6 +20,7 @@ struct SelectionState {
     wizard_tab_idx: usize,
     wizard_agent_idx: usize,
     wizard_tab_filter: String,
+    wizard_agent_filter: String,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +118,14 @@ impl Model {
 
     pub fn wizard_tab_filter_mut(&mut self) -> &mut String {
         &mut self.selection.wizard_tab_filter
+    }
+
+    pub fn wizard_agent_filter(&self) -> &str {
+        &self.selection.wizard_agent_filter
+    }
+
+    pub fn wizard_agent_filter_mut(&mut self) -> &mut String {
+        &mut self.selection.wizard_agent_filter
     }
 
     pub fn agent_name_input(&self) -> &str {

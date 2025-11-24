@@ -459,6 +459,7 @@ pub fn spawn_agent_pane(
     model.error_message_mut().clear();
     *model.custom_tab_name_mut() = None;
     *model.wizard_tab_filter_mut() = String::new();
+    *model.wizard_agent_filter_mut() = String::new();
     if model.status_message().is_empty() {
         *model.status_message_mut() = "Agent pane launched".to_string();
     } else {
@@ -939,10 +940,10 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
     }
 
     match key.bare_key {
-        BareKey::Char('j') | BareKey::Char('J') => {
+        BareKey::Down => {
             move_selection(model, model.focused_section(), 1);
         }
-        BareKey::Char('k') | BareKey::Char('K') => {
+        BareKey::Up => {
             move_selection(model, model.focused_section(), -1);
         }
         BareKey::Tab => {
@@ -1022,6 +1023,7 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
         BareKey::Enter => {
             *model.mode_mut() = Mode::NewPaneTabSelect;
             *model.wizard_tab_filter_mut() = String::new();
+            *model.wizard_agent_filter_mut() = String::new();
             *model.wizard_tab_idx_mut() = 0;
             *model.wizard_agent_idx_mut() = 0;
             reset_status(model);
@@ -1057,12 +1059,12 @@ fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier)
     }
     
     match key.bare_key {
-        BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
+        BareKey::Up => {
             if model.wizard_tab_idx() > 0 {
                 *model.wizard_tab_idx_mut() = model.wizard_tab_idx() - 1;
             }
         }
-        BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
+        BareKey::Down => {
             if model.wizard_tab_idx() + 1 < choices {
                 *model.wizard_tab_idx_mut() = model.wizard_tab_idx() + 1;
             }
@@ -1077,6 +1079,7 @@ fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier)
                 }
             } else {
                 *model.mode_mut() = Mode::NewPaneAgentSelect;
+                *model.wizard_agent_filter_mut() = String::new();
                 *model.wizard_agent_idx_mut() = 0;
             }
         }
@@ -1087,21 +1090,47 @@ fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier)
 }
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
-    let choices = model.agents().len().saturating_add(1);
+    use fuzzy_matcher::FuzzyMatcher;
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    
+    if handle_text_edit(model.wizard_agent_filter_mut(), &key) {
+        *model.wizard_agent_idx_mut() = 0;
+        return;
+    }
+    
+    let filter_text = model.wizard_agent_filter();
+    let filtered_agents: Vec<(usize, &Agent)> = if filter_text.is_empty() {
+        model.agents().iter().enumerate().collect()
+    } else {
+        let matcher = SkimMatcherV2::default();
+        model.agents()
+            .iter()
+            .enumerate()
+            .filter(|(_, agent)| matcher.fuzzy_match(&agent.name, filter_text).is_some())
+            .collect()
+    };
+    
+    let has_exact_match = filtered_agents.iter().any(|(_, agent)| agent.name.eq_ignore_ascii_case(filter_text));
+    let show_new_agent = !filter_text.is_empty() && !has_exact_match;
+    let choices = filtered_agents.len() + if show_new_agent || filter_text.is_empty() { 1 } else { 0 };
+    
     match key.bare_key {
-        BareKey::Char('k') | BareKey::Char('K') | BareKey::Up => {
+        BareKey::Up => {
             if model.wizard_agent_idx() > 0 {
                 *model.wizard_agent_idx_mut() = model.wizard_agent_idx() - 1;
             }
         }
-        BareKey::Char('j') | BareKey::Char('J') | BareKey::Down => {
+        BareKey::Down => {
             if model.wizard_agent_idx() + 1 < choices {
                 *model.wizard_agent_idx_mut() = model.wizard_agent_idx() + 1;
             }
         }
         BareKey::Enter => {
-            if model.wizard_agent_idx() < model.agents().len() {
-                let agent = model.agents()[model.wizard_agent_idx()].name.clone();
+            let idx = model.wizard_agent_idx();
+            let filter_text = model.wizard_agent_filter().to_string();
+            if idx < filtered_agents.len() {
+                let (original_idx, _) = filtered_agents[idx];
+                let agent = model.agents()[original_idx].name.clone();
                 let workspace = model.workspace_input().trim().to_string();
                 let tab_choice = selected_tab_choice(model);
                 spawn_agent_pane(model, workspace, agent, tab_choice);
@@ -1109,9 +1138,13 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                     view_preserve_messages(model);
                 }
             } else {
+                if !filter_text.trim().is_empty() {
+                    *model.agent_name_input_mut() = filter_text.trim().to_string();
+                } else {
+                    model.agent_name_input_mut().clear();
+                }
                 *model.mode_mut() = Mode::NewPaneAgentCreate;
                 *model.agent_form_source_mut() = Some(Mode::NewPaneAgentSelect);
-                model.agent_name_input_mut().clear();
                 model.agent_command_input_mut().clear();
                 model.agent_env_input_mut().clear();
                 model.agent_note_input_mut().clear();
@@ -1224,6 +1257,7 @@ fn cancel_to_view(model: &mut Model) {
     *model.quick_launch_agent_name_mut() = None;
     *model.custom_tab_name_mut() = None;
     *model.wizard_tab_filter_mut() = String::new();
+    *model.wizard_agent_filter_mut() = String::new();
     reset_status(model);
 }
 
@@ -1235,6 +1269,7 @@ fn start_new_pane_workspace(model: &mut Model) {
     model.workspace_input_mut().clear();
     *model.custom_tab_name_mut() = None;
     *model.wizard_tab_filter_mut() = String::new();
+    *model.wizard_agent_filter_mut() = String::new();
     *model.mode_mut() = Mode::NewPaneWorkspace;
     *model.wizard_agent_idx_mut() = 0;
     *model.wizard_tab_idx_mut() = 0;
