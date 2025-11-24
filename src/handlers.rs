@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use anyhow;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 use zellij_tile::prelude::{
@@ -342,6 +343,20 @@ pub fn handle_command_pane_rerun(model: &mut Model, pane_id: u32, ctx: BTreeMap<
 }
 
 pub fn handle_session_update(model: &mut Model, sessions: Vec<SessionInfo>) {
+    let current_session_name = sessions
+        .iter()
+        .find(|s| s.is_current_session)
+        .map(|s| s.name.clone());
+    
+    if let Some(new_session_name) = current_session_name {
+        if let Some(old_session_name) = model.session_name() {
+            if old_session_name != &new_session_name {
+                model.agent_panes_mut().clear();
+            }
+        }
+        *model.session_name_mut() = Some(new_session_name);
+    }
+    
     rebuild_from_session_infos(model, &sessions);
 }
 
@@ -547,6 +562,10 @@ fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
 
 fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
     let path = default_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| MaestroError::Config(anyhow::anyhow!("create config directory: {e}")))?;
+    }
     let user_agents: Vec<_> = model
         .agents()
         .iter()

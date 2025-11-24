@@ -77,11 +77,7 @@ pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
 
 pub fn default_config_path() -> Result<PathBuf> {
     let base = config_base_dir()?;
-    let path = base.join("agents.kdl");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).context("create config directory")?;
-    }
-    Ok(path)
+    Ok(base.join("agents.kdl"))
 }
 
 pub fn default_agents() -> Vec<Agent> {
@@ -142,6 +138,9 @@ pub fn load_agents_default() -> Result<Vec<Agent>> {
 
 pub fn save_agents_default(agents: &[Agent]) -> Result<()> {
     let path = default_config_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).context("create config directory")?;
+    }
     let user_agents: Vec<Agent> = agents
         .iter()
         .filter(|a| !is_default_agent(&a.name))
