@@ -1,18 +1,21 @@
-use std::collections::{hash_map::DefaultHasher, BTreeMap};
-use std::hash::{Hash, Hasher};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 use zellij_tile::prelude::{
     BareKey, KeyModifier, KeyWithModifier, PaneId, PaneManifest, PermissionStatus, TabInfo,
 };
-use zellij_tile::ui_components::{serialize_ribbon_line, Table, Text};
 
-mod agents;
+mod agent;
+mod model;
+mod ui;
+mod utils;
+
+use agent::{load_agents_default, Agent, AgentPane, PaneStatus};
+use model::Model;
+use ui::{render_ui, AgentFormField, Mode, Section, next_field, prev_field};
+use utils::{build_command_with_env, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename, workspace_tab_name};
 
 const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::ReadApplicationState,
@@ -23,121 +26,6 @@ const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::OpenTerminalsOrPlugins,
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Agent {
-    pub name: String,
-    pub command: Vec<String>,
-    #[serde(default)]
-    pub env: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub note: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PaneStatus {
-    Running,
-    Exited(Option<i32>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AgentPane {
-    pub pane_title: String,
-    pub tab_name: String,
-    pub pane_id: Option<u32>,
-    pub workspace_path: String,
-    pub agent_name: String,
-    pub status: PaneStatus,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Section {
-    AgentPanes,
-    Agents,
-}
-
-impl Default for Section {
-    fn default() -> Self {
-        Section::AgentPanes
-    }
-}
-
-impl Section {
-    fn next(self) -> Self {
-        match self {
-            Section::AgentPanes => Section::Agents,
-            Section::Agents => Section::AgentPanes,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Section::AgentPanes => "Maestro",
-            Section::Agents => "Agents",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
-    View,
-    NewPaneWorkspace,
-    NewPaneTabSelect,
-    NewPaneAgentSelect,
-    NewPaneAgentCreate,
-    AgentFormCreate,
-    AgentFormEdit,
-    DeleteConfirm,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::View
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentFormField {
-    Name,
-    Command,
-    Env,
-    Note,
-}
-
-impl Default for AgentFormField {
-    fn default() -> Self {
-        AgentFormField::Name
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Model {
-    pub permissions_granted: bool,
-    pub permissions_denied: bool,
-    pub agents: Vec<Agent>,
-    pub agent_panes: Vec<AgentPane>,
-    pub tab_names: Vec<String>,
-    pub status_message: String,
-    pub error_message: String,
-    pub selected_tab: usize,
-    pub selected_pane: usize,
-    pub selected_agent: usize,
-    pub focused_section: Section,
-    pub filter_text: String,
-    pub filter_active: bool,
-    pub mode: Mode,
-    pub agent_form_source: Option<Mode>,
-    pub quick_launch_agent_name: Option<String>,
-    pub workspace_input: String,
-    pub wizard_tab_idx: usize,
-    pub agent_name_input: String,
-    pub agent_command_input: String,
-    pub agent_env_input: String,
-    pub agent_note_input: String,
-    pub agent_form_field: AgentFormField,
-    pub wizard_agent_idx: usize,
-    pub form_target_agent: Option<usize>,
-    pub session_name: Option<String>,
-}
 
 pub struct Maestro {
     model: Model,
@@ -1166,9 +1054,10 @@ impl Model {
     }
 
     fn persist_agents(&mut self) -> Result<PathBuf, String> {
-        let path = agents::config_path().map_err(|e| format!("config path: {e}"))?;
-        agents::save_agents(&self.agents).map_err(|e| format!("save agents: {e}"))?;
-        match agents::load_agents() {
+        use agent::{default_config_path, load_agents, save_agents};
+        let path = default_config_path().map_err(|e| format!("config path: {e}"))?;
+        save_agents(&path, &self.agents).map_err(|e| format!("save agents: {e}"))?;
+        match load_agents(&path) {
             Ok(list) => {
                 self.agents = list;
                 self.clamp_selections();
@@ -1182,7 +1071,7 @@ impl Model {
 
 impl ZellijPlugin for Maestro {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
-        match agents::load_agents() {
+        match load_agents_default() {
             Ok(list) => self.model.agents = list,
             Err(err) => {
                 eprintln!("maestro: load agents: {err}");
@@ -1272,392 +1161,6 @@ impl ZellijPlugin for Maestro {
     }
 }
 
-fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
-    let mut out = String::new();
-
-    out.push_str(&render_section_tabs(model, cols));
-    out.push('\n');
-
-    if model.filter_active && model.focused_section == Section::AgentPanes {
-        out.push_str(&render_filter(model, cols));
-        out.push('\n');
-    }
-
-    match model.focused_section {
-        Section::AgentPanes => {
-            out.push_str(&render_agent_panes(model, cols));
-        }
-        Section::Agents => {
-            out.push_str(&render_agent_management(model, cols));
-        }
-    }
-
-    if let Some(overlay) = render_overlay(model, cols) {
-        out.push('\n');
-        out.push_str(&overlay);
-    }
-    out.push('\n');
-    out.push_str(&render_status(model, cols));
-    out
-}
-
-fn render_section_tabs(model: &Model, _cols: usize) -> String {
-    let mut ribbon_items = Vec::new();
-    for section in [Section::AgentPanes, Section::Agents] {
-        let label = section.label();
-        let is_active = model.focused_section == section;
-        let text = if is_active {
-            Text::new(label).selected()
-        } else {
-            Text::new(label)
-        };
-        ribbon_items.push(text);
-    }
-    serialize_ribbon_line(ribbon_items)
-}
-
-fn render_filter(model: &Model, _cols: usize) -> String {
-    let filter_prompt = if model.filter_text.is_empty() {
-        "Filter: (type to filter by agent name or tab)"
-    } else {
-        "Filter:"
-    };
-    format!("{} {}", filter_prompt, model.filter_text)
-}
-
-fn render_agent_panes(model: &Model, cols: usize) -> String {
-    let panes: Vec<&AgentPane> = if model.filter_text.is_empty() {
-        model.agent_panes.iter().collect()
-    } else {
-        let matcher = SkimMatcherV2::default();
-        let filter_text = &model.filter_text;
-
-        model
-            .agent_panes
-            .iter()
-            .filter(|p| {
-                let status_text = match p.status {
-                    PaneStatus::Running => "RUNNING",
-                    PaneStatus::Exited(_) => "EXITED",
-                };
-                let searchable = format!("{} {} {}", p.agent_name, p.tab_name, status_text);
-
-                matcher.fuzzy_match(&searchable, filter_text).is_some()
-            })
-            .collect()
-    };
-
-    let mut table = Table::new().add_row(vec!["Tab", "Agent", "Status"]);
-
-    for (idx, pane) in panes.iter().enumerate() {
-        let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
-        let agent = if pane.agent_name.is_empty() {
-            "(agent)"
-        } else {
-            &pane.agent_name
-        };
-        let status_text = match pane.status {
-            PaneStatus::Running => "RUNNING",
-            PaneStatus::Exited(_) => "EXITED",
-        };
-
-        let status_color = match pane.status {
-            PaneStatus::Running => 2,
-            PaneStatus::Exited(_) => 1,
-        };
-
-        let mut row = vec![
-            Text::new(tab),
-            Text::new(agent.to_string()),
-            Text::new(status_text.to_string()).color_all(status_color),
-        ];
-
-        if idx == model.selected_pane {
-            row = row.into_iter().map(|t| t.selected()).collect();
-        }
-
-        table = table.add_styled_row(row);
-    }
-    if panes.is_empty() {
-        table = table.add_row(vec![
-            "(no agent panes)".to_string(),
-            "".to_string(),
-            "".to_string(),
-        ]);
-    }
-    serialize_table(&table)
-}
-
-fn render_agent_management(model: &Model, cols: usize) -> String {
-    let mut table = Table::new().add_row(vec!["Agent", "Command", "Note"]);
-
-    let command_col_width = (cols as f32 * 0.50) as usize;
-
-    for (idx, agent) in model.agents.iter().enumerate() {
-        let name = if agent.name.is_empty() {
-            "(agent)"
-        } else {
-            &agent.name
-        };
-        let command_full = agent.command.join(" ");
-        let command = truncate(&command_full, command_col_width);
-
-        let note = agent
-            .note
-            .as_ref()
-            .map(|n| n.as_str())
-            .filter(|n| !n.is_empty())
-            .unwrap_or("—");
-
-        let row = vec![name.to_string(), command.to_string(), note.to_string()];
-        let styled = if idx == model.selected_agent {
-            row.into_iter().map(|c| Text::new(c).selected()).collect()
-        } else {
-            row.into_iter().map(Text::new).collect()
-        };
-        table = table.add_styled_row(styled);
-    }
-
-    if model.agents.is_empty() {
-        table = table.add_row(vec![
-            "(no agents)".to_string(),
-            "".to_string(),
-            "".to_string(),
-        ]);
-    }
-
-    serialize_table(&table)
-}
-
-fn render_overlay(model: &Model, cols: usize) -> Option<String> {
-    match model.mode {
-        Mode::View => None,
-        Mode::NewPaneWorkspace => Some(format!(
-            "New Agent Pane: workspace path (optional)\n> {}_",
-            truncate(&model.workspace_input, cols.saturating_sub(2))
-        )),
-        Mode::NewPaneTabSelect => {
-            let mut lines = Vec::new();
-            lines.push("New Agent Pane: select tab".to_string());
-            for (idx, tab) in model.tab_names.iter().enumerate() {
-                let prefix = if idx == model.wizard_tab_idx {
-                    ">"
-                } else {
-                    " "
-                };
-                lines.push(format!(
-                    "{} {}",
-                    prefix,
-                    truncate(tab, cols.saturating_sub(2))
-                ));
-            }
-            let create_idx = model.tab_names.len();
-            let prefix = if model.wizard_tab_idx == create_idx {
-                ">"
-            } else {
-                " "
-            };
-            let suggested = workspace_tab_name(&model.workspace_input);
-            lines.push(format!("{prefix} (new tab: {suggested})"));
-            Some(lines.join("\n"))
-        }
-        Mode::NewPaneAgentSelect => {
-            let mut lines = Vec::new();
-            lines.push("New Agent Pane: select agent or create new".to_string());
-            for (idx, agent) in model.agents.iter().enumerate() {
-                let prefix = if idx == model.wizard_agent_idx {
-                    ">"
-                } else {
-                    " "
-                };
-                lines.push(format!(
-                    "{} {}",
-                    prefix,
-                    truncate(&agent.name, cols.saturating_sub(2))
-                ));
-            }
-            let create_idx = model.agents.len();
-            let prefix = if model.wizard_agent_idx == create_idx {
-                ">"
-            } else {
-                " "
-            };
-            lines.push(format!("{prefix} (create new agent)"));
-            Some(lines.join("\n"))
-        }
-        Mode::NewPaneAgentCreate => Some(render_agent_form_overlay(
-            model,
-            "New Agent Pane: create agent then launch",
-            cols,
-        )),
-        Mode::AgentFormCreate => Some(render_agent_form_overlay(
-            model,
-            "Add agent (not yet persisted)",
-            cols,
-        )),
-        Mode::AgentFormEdit => Some(render_agent_form_overlay(
-            model,
-            "Edit agent (not yet persisted)",
-            cols,
-        )),
-        Mode::DeleteConfirm => {
-            let name = model
-                .form_target_agent
-                .and_then(|idx| model.agents.get(idx))
-                .map(|a| a.name.as_str())
-                .unwrap_or("(unknown)");
-            Some(format!(
-                "Delete agent \"{name}\"? Enter/y to delete, Esc/n to cancel"
-            ))
-        }
-    }
-}
-
-fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String {
-    let mut lines = Vec::new();
-    lines.push(title.to_string());
-    let mk = |label: &str, val: &str, field: AgentFormField, current: AgentFormField| {
-        let marker = if field == current { ">" } else { " " };
-        format!(
-            "{marker} {label}: {}",
-            truncate(val, cols.saturating_sub(label.len() + 4))
-        )
-    };
-    lines.push(mk(
-        "Name",
-        &model.agent_name_input,
-        AgentFormField::Name,
-        model.agent_form_field,
-    ));
-    lines.push(mk(
-        "Command",
-        &model.agent_command_input,
-        AgentFormField::Command,
-        model.agent_form_field,
-    ));
-    lines.push(mk(
-        "Env",
-        &model.agent_env_input,
-        AgentFormField::Env,
-        model.agent_form_field,
-    ));
-    lines.push(mk(
-        "Note",
-        &model.agent_note_input,
-        AgentFormField::Note,
-        model.agent_form_field,
-    ));
-    lines.join("\n")
-}
-
-fn render_status(model: &Model, cols: usize) -> String {
-    let hints = match model.mode {
-        Mode::View => {
-            if model.filter_active {
-                "Filter mode: type to filter • ↑/↓ move • Esc exit filter"
-            } else {
-                match model.focused_section {
-                    Section::AgentPanes => "j/k move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
-                    Section::Agents => "j/k move • Tab switch section • Enter/e edit • d delete • n launch • a create • Esc close",
-                }
-            }
-        }
-        Mode::NewPaneWorkspace => "[Enter/Tab] continue • Esc cancel • type to edit path",
-        Mode::NewPaneTabSelect => "[j/k or ↑/↓] choose tab • Enter confirm • Esc cancel",
-        Mode::NewPaneAgentSelect => "[j/k or ↑/↓] choose • Enter select/create • Esc cancel",
-        Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
-        Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
-        Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
-    };
-    let msg = if !model.error_message.is_empty() {
-        format!("ERROR: {}", model.error_message)
-    } else if model.status_message.is_empty() {
-        hints.to_string()
-    } else {
-        format!("{} — {}", model.status_message, hints)
-    };
-    truncate(&msg, cols)
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max {
-            out.push('…');
-            break;
-        }
-        out.push(ch);
-    }
-    out
-}
-
-fn truncate_path(path: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    if path.is_empty() {
-        return "—".to_string();
-    }
-
-    let home = std::env::var("HOME").unwrap_or_default();
-    let relative_path = if !home.is_empty() && path.starts_with(&home) {
-        path.replacen(&home, "~", 1)
-    } else {
-        path.to_string()
-    };
-
-    if relative_path.chars().count() <= max {
-        return relative_path;
-    }
-
-    let chars: Vec<char> = relative_path.chars().collect();
-    if chars.len() <= max {
-        return relative_path;
-    }
-
-    let ellipsis = "…";
-    let ellipsis_len = ellipsis.chars().count();
-    if max <= ellipsis_len {
-        return truncate(&relative_path, max);
-    }
-
-    let take_from_end = max - ellipsis_len;
-    let end: String = chars.iter().rev().take(take_from_end).rev().collect();
-    format!("{}{}", ellipsis, end)
-}
-
-fn build_command_with_env(agent: &Agent) -> Vec<String> {
-    let mut parts = Vec::new();
-    if let Some(env) = &agent.env {
-        for (k, v) in env {
-            parts.push(format!("{}={}", k, v));
-        }
-    }
-    parts.extend(agent.command.clone());
-    parts
-}
-
-fn workspace_basename(path: &str) -> String {
-    path.rsplit('/').next().unwrap_or(path).to_string()
-}
-
-fn workspace_tab_name(path: &str) -> String {
-    let base = if path.is_empty() {
-        "workspace".to_string()
-    } else {
-        workspace_basename(path)
-    };
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    let hash = hasher.finish();
-    let short = format!("{hash:016x}");
-    let suffix = &short[..6.min(short.len())];
-    format!("maestro:{base}:{suffix}")
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TabChoice {
     Existing(String),
@@ -1672,22 +1175,6 @@ fn selected_tab_choice(model: &Model) -> TabChoice {
     }
 }
 
-fn is_maestro_tab(title: &str) -> bool {
-    title.starts_with("maestro:")
-}
-
-fn parse_title_hint(title: &str) -> Option<(String, String)> {
-    if !is_maestro_tab(title) {
-        return None;
-    }
-    let parts: Vec<&str> = title.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let agent = parts.get(1).unwrap_or(&"").to_string();
-    let workspace_hint = parts.get(2).unwrap_or(&"").to_string();
-    Some((agent, workspace_hint))
-}
 
 fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
     match key.bare_key {
@@ -1716,43 +1203,5 @@ fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
     }
 }
 
-fn next_field(current: AgentFormField) -> AgentFormField {
-    match current {
-        AgentFormField::Name => AgentFormField::Command,
-        AgentFormField::Command => AgentFormField::Env,
-        AgentFormField::Env => AgentFormField::Note,
-        AgentFormField::Note => AgentFormField::Name,
-    }
-}
-
-fn prev_field(current: AgentFormField) -> AgentFormField {
-    match current {
-        AgentFormField::Name => AgentFormField::Note,
-        AgentFormField::Command => AgentFormField::Name,
-        AgentFormField::Env => AgentFormField::Command,
-        AgentFormField::Note => AgentFormField::Env,
-    }
-}
-
-fn parse_env_input(input: &str) -> Result<Option<BTreeMap<String, String>>, String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    let mut map = BTreeMap::new();
-    for pair in trimmed.split(',') {
-        if pair.trim().is_empty() {
-            continue;
-        }
-        let mut parts = pair.splitn(2, '=');
-        let key = parts.next().map(str::trim).unwrap_or("").to_string();
-        let val = parts.next().map(str::trim).unwrap_or("").to_string();
-        if key.is_empty() {
-            return Err("env entries must be KEY=VAL".to_string());
-        }
-        map.insert(key, val);
-    }
-    Ok(Some(map))
-}
 
 register_plugin!(Maestro);
