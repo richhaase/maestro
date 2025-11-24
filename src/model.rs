@@ -264,3 +264,88 @@ impl Model {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{Agent, AgentPane, PaneStatus};
+
+    fn create_test_agent(name: &str) -> Agent {
+        Agent {
+            name: name.to_string(),
+            command: vec!["echo".to_string(), name.to_string()],
+            env: None,
+            note: None,
+        }
+    }
+
+    fn create_test_pane(agent_name: &str, tab_name: &str) -> AgentPane {
+        AgentPane {
+            pane_title: format!("maestro:{}", agent_name),
+            tab_name: tab_name.to_string(),
+            pane_id: Some(1),
+            workspace_path: String::new(),
+            agent_name: agent_name.to_string(),
+            status: PaneStatus::Running,
+        }
+    }
+
+    #[test]
+    fn test_clamp_selections_empty() {
+        let mut model = Model::default();
+        model.selection.selected_pane = 5;
+        model.selection.selected_agent = 3;
+        model.clamp_selections();
+        assert_eq!(model.selected_pane(), 0);
+        assert_eq!(model.selected_agent(), 0);
+    }
+
+    #[test]
+    fn test_clamp_selections_out_of_bounds() {
+        let mut model = Model::default();
+        model.agents_mut().push(create_test_agent("agent1"));
+        model.agents_mut().push(create_test_agent("agent2"));
+        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
+        model.selection.selected_pane = 10;
+        model.selection.selected_agent = 10;
+        model.clamp_selections();
+        assert_eq!(model.selected_pane(), 0);
+        assert_eq!(model.selected_agent(), 1);
+    }
+
+    #[test]
+    fn test_clamp_selections_with_filter() {
+        let mut model = Model::default();
+        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
+        model.agent_panes_mut().push(create_test_pane("agent2", "tab2"));
+        model.agent_panes_mut().push(create_test_pane("other", "tab3"));
+        *model.filter_text_mut() = "agent".to_string();
+        model.selection.selected_pane = 5;
+        model.clamp_selections();
+        assert_eq!(model.selected_pane(), 1);
+    }
+
+    #[test]
+    fn test_clamp_selections_filter_matches_tab_name() {
+        let mut model = Model::default();
+        model.agent_panes_mut().push(create_test_pane("other", "agent-tab"));
+        model.agent_panes_mut().push(create_test_pane("other", "other-tab"));
+        *model.filter_text_mut() = "agent".to_string();
+        model.selection.selected_pane = 0;
+        model.clamp_selections();
+        assert_eq!(model.selected_pane(), 0);
+    }
+
+    #[test]
+    fn test_clamp_selections_valid_selection_preserved() {
+        let mut model = Model::default();
+        model.agents_mut().push(create_test_agent("agent1"));
+        model.agents_mut().push(create_test_agent("agent2"));
+        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
+        model.selection.selected_pane = 0;
+        model.selection.selected_agent = 1;
+        model.clamp_selections();
+        assert_eq!(model.selected_pane(), 0);
+        assert_eq!(model.selected_agent(), 1);
+    }
+}
