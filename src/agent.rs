@@ -77,7 +77,11 @@ pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
 
 pub fn default_config_path() -> Result<PathBuf> {
     let base = config_base_dir()?;
-    Ok(base.join("agents.kdl"))
+    let path = base.join("agents.kdl");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).context("create config directory")?;
+    }
+    Ok(path)
 }
 
 pub fn default_agents() -> Vec<Agent> {
@@ -242,7 +246,7 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
 }
 
 fn config_base_dir() -> Result<PathBuf> {
-    Ok(PathBuf::from("/host"))
+    Ok(PathBuf::from("/host/.config/maestro"))
 }
 
 #[cfg(test)]
@@ -430,7 +434,7 @@ agent name="duplicate" {
     fn test_default_config_path() {
         let path = default_config_path().unwrap();
         assert!(path.to_string_lossy().ends_with("agents.kdl"));
-        assert!(path.to_string_lossy().contains("/host"));
+        assert!(path.to_string_lossy().contains("/host/.config/maestro"));
     }
 
     #[test]
