@@ -218,7 +218,7 @@ pub fn resolve_host_path(path: &str) -> PathBuf {
 }
 
 /// Resolve a workspace path for Zellij API calls
-/// Converts /host paths to absolute paths, returns relative paths as-is
+/// Converts /host paths to relative paths (since Zellij cwd is home directory)
 /// Empty path returns None (Zellij will use default cwd)
 pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     let trimmed = path.trim();
@@ -226,8 +226,15 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
         return None;
     }
     
-    if trimmed.starts_with("/host") {
-        Some(resolve_host_path(trimmed))
+    if trimmed.starts_with("/host/") {
+        let relative = trimmed.strip_prefix("/host/").unwrap_or("");
+        if relative.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(relative))
+        }
+    } else if trimmed == "/host" {
+        None
     } else {
         Some(PathBuf::from(trimmed))
     }
