@@ -5,7 +5,7 @@ use zellij_tile::ui_components::{serialize_ribbon_line, serialize_table, Table, 
 use crate::agent::{AgentPane, PaneStatus};
 use crate::agent::Agent;
 use crate::model::Model;
-use crate::utils::truncate;
+use crate::utils::{truncate, get_home_directory, read_directory, DirEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
@@ -35,6 +35,7 @@ pub enum Mode {
     #[default]
     View,
     NewPaneWorkspace,
+    NewPaneWorkspaceBrowse,
     NewPaneTabSelect,
     NewPaneAgentSelect,
     NewPaneAgentCreate,
@@ -244,10 +245,126 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
     match model.mode() {
         Mode::View => None,
-        Mode::NewPaneWorkspace => Some(format!(
-            "New Agent Pane: workspace path (optional)\n> {}_",
-            truncate(model.workspace_input(), cols.saturating_sub(2))
-        )),
+        Mode::NewPaneWorkspace => {
+            let mut lines = Vec::new();
+            let input = model.workspace_input();
+            let display_input = input.strip_prefix("/host/").unwrap_or(input);
+            lines.push("New Agent Pane: workspace path (optional)".to_string());
+            lines.push(format!("> {}_", truncate(display_input, cols.saturating_sub(2))));
+            
+            if !input.trim().is_empty() {
+                let suggestions = crate::utils::get_path_suggestions(input);
+                if !suggestions.is_empty() {
+                    lines.push("".to_string());
+                    let max_display = 5;
+                    let start_idx = if model.browse_selected_idx() < max_display {
+                        0
+                    } else {
+                        model.browse_selected_idx().saturating_sub(max_display - 1)
+                    };
+                    let end_idx = (start_idx + max_display).min(suggestions.len());
+                    
+                    for (display_idx, suggestion) in suggestions[start_idx..end_idx].iter().enumerate() {
+                        let actual_idx = start_idx + display_idx;
+                        let prefix = if actual_idx == model.browse_selected_idx() {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        let display_path = suggestion.strip_prefix("/host/").unwrap_or(suggestion);
+                        lines.push(format!(
+                            "{} {}",
+                            prefix,
+                            truncate(display_path, cols.saturating_sub(2))
+                        ));
+                    }
+                    
+                    if suggestions.len() > max_display {
+                        let showing = end_idx - start_idx;
+                        lines.push(format!("... showing {} of {}", showing, suggestions.len()));
+                    }
+                }
+            }
+            
+            lines.push("".to_string());
+            lines.push("[↑/↓] select suggestion • Enter continue • Esc cancel".to_string());
+            Some(lines.join("\n"))
+        },
+        Mode::NewPaneWorkspaceBrowse => {
+            let mut lines = Vec::new();
+            let filter_text = model.browse_filter();
+            let current_path = if model.browse_path().is_empty() {
+                "/host".to_string()
+            } else {
+                model.browse_path().to_string()
+            };
+            
+            let dir_path = if current_path == "/host" {
+                get_home_directory()
+            } else {
+                std::path::PathBuf::from(&current_path)
+            };
+            
+            let entries = match read_directory(&dir_path) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    lines.push("New Agent Pane: select workspace directory".to_string());
+                    lines.push(format!("> {}_", truncate(filter_text, cols.saturating_sub(2))));
+                    lines.push("".to_string());
+                    lines.push(format!("Error reading directory: {}", truncate(&e, cols.saturating_sub(20))));
+                    lines.push("Press Esc to go back".to_string());
+                    return Some(lines.join("\n"));
+                }
+            };
+            
+            let filtered_entries: Vec<&DirEntry> = if filter_text.is_empty() {
+                entries.iter().collect()
+            } else {
+                use fuzzy_matcher::FuzzyMatcher;
+                use fuzzy_matcher::skim::SkimMatcherV2;
+                let matcher = SkimMatcherV2::default();
+                entries.iter()
+                    .filter(|entry| matcher.fuzzy_match(&entry.name, filter_text).is_some())
+                    .collect()
+            };
+            
+            lines.push("New Agent Pane: select workspace directory".to_string());
+            lines.push(format!("Path: {}", truncate(&current_path, cols.saturating_sub(6))));
+            lines.push(format!("> {}_", truncate(filter_text, cols.saturating_sub(2))));
+            lines.push("".to_string());
+            
+            let max_display = 5;
+            let start_idx = if model.browse_selected_idx() < max_display {
+                0
+            } else {
+                model.browse_selected_idx().saturating_sub(max_display - 1)
+            };
+            let end_idx = (start_idx + max_display).min(filtered_entries.len());
+            
+            for (display_idx, entry) in filtered_entries[start_idx..end_idx].iter().enumerate() {
+                let actual_idx = start_idx + display_idx;
+                let prefix = if actual_idx == model.browse_selected_idx() {
+                    ">"
+                } else {
+                    " "
+                };
+                lines.push(format!(
+                    "{} 📁 {}",
+                    prefix,
+                    truncate(&entry.name, cols.saturating_sub(4))
+                ));
+            }
+            
+            if filtered_entries.len() > max_display {
+                let showing = end_idx - start_idx;
+                lines.push(format!("... showing {} of {} directories", showing, filtered_entries.len()));
+            }
+            
+            lines.push("".to_string());
+            lines.push("[↑/↓] navigate • →/Tab enter dir • Enter select • ←/h up • Esc cancel".to_string());
+            
+            Some(lines.join("\n"))
+        },
         Mode::NewPaneTabSelect => {
             let mut lines = Vec::new();
             let filter_text = model.wizard_tab_filter();
@@ -451,6 +568,7 @@ fn render_status(model: &Model, cols: usize) -> String {
             }
         }
         Mode::NewPaneWorkspace => "[Enter] continue • Esc cancel • type to edit path",
+        Mode::NewPaneWorkspaceBrowse => "[↑/↓] navigate • type to filter • Enter select • Esc cancel",
         Mode::NewPaneTabSelect => "[↑/↓] choose tab • type to edit new tab name • Enter confirm • Esc cancel",
         Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
         Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",

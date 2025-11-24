@@ -21,6 +21,9 @@ struct SelectionState {
     wizard_agent_idx: usize,
     wizard_tab_filter: String,
     wizard_agent_filter: String,
+    browse_path: String,
+    browse_filter: String,
+    browse_selected_idx: usize,
 }
 
 #[derive(Debug, Default)]
@@ -126,6 +129,30 @@ impl Model {
 
     pub fn wizard_agent_filter_mut(&mut self) -> &mut String {
         &mut self.selection.wizard_agent_filter
+    }
+
+    pub fn browse_path(&self) -> &str {
+        &self.selection.browse_path
+    }
+
+    pub fn browse_path_mut(&mut self) -> &mut String {
+        &mut self.selection.browse_path
+    }
+
+    pub fn browse_filter(&self) -> &str {
+        &self.selection.browse_filter
+    }
+
+    pub fn browse_filter_mut(&mut self) -> &mut String {
+        &mut self.selection.browse_filter
+    }
+
+    pub fn browse_selected_idx(&self) -> usize {
+        self.selection.browse_selected_idx
+    }
+
+    pub fn browse_selected_idx_mut(&mut self) -> &mut usize {
+        &mut self.selection.browse_selected_idx
     }
 
     pub fn agent_name_input(&self) -> &str {

@@ -1,6 +1,115 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::agent::Agent;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: PathBuf,
+    pub is_directory: bool,
+}
+
+/// Read directory entries, filtering to directories only
+pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>, String> {
+    let entries = fs::read_dir(path).map_err(|e| format!("read directory: {e}"))?;
+    let mut dirs = Vec::new();
+    
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read entry: {e}"))?;
+        let metadata = entry.metadata().map_err(|e| format!("read metadata: {e}"))?;
+        
+        if metadata.is_dir() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let path = entry.path();
+            dirs.push(DirEntry {
+                name,
+                path,
+                is_directory: true,
+            });
+        }
+    }
+    
+    dirs.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(dirs)
+}
+
+/// Get autocomplete suggestions for a partial path
+/// Returns directories that match the last segment of the path
+pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
+    use fuzzy_matcher::FuzzyMatcher;
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    
+    let trimmed = partial_path.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    
+    let home = get_home_directory();
+    
+    let (base_path, filter_segment) = if trimmed == "/host" || trimmed == "/host/" {
+        (home.clone(), String::new())
+    } else if trimmed.starts_with("/host/") {
+        let relative = trimmed.strip_prefix("/host/").unwrap_or("");
+        if relative.is_empty() {
+            (home.clone(), String::new())
+        } else if relative.ends_with('/') {
+            (home.join(relative.trim_end_matches('/')), String::new())
+        } else {
+            let parts: Vec<&str> = relative.split('/').collect();
+            if parts.len() == 1 {
+                (home.clone(), parts[0].to_string())
+            } else {
+                let base = parts[..parts.len() - 1].join("/");
+                let filter = parts.last().unwrap_or(&"").to_string();
+                (home.join(base), filter)
+            }
+        }
+    } else if trimmed.ends_with('/') {
+        (home.join(trimmed.trim_end_matches('/')), String::new())
+    } else {
+        let parts: Vec<&str> = trimmed.split('/').collect();
+        if parts.len() == 1 {
+            (home.clone(), parts[0].to_string())
+        } else {
+            let base = parts[..parts.len() - 1].join("/");
+            let filter = parts.last().unwrap_or(&"").to_string();
+            (home.join(base), filter)
+        }
+    };
+    
+    let entries = match read_directory(&base_path) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    
+    let matcher = SkimMatcherV2::default();
+    
+    let mut suggestions: Vec<String> = entries
+        .iter()
+        .filter(|entry| {
+            if filter_segment.is_empty() {
+                true
+            } else {
+                matcher.fuzzy_match(&entry.name, &filter_segment).is_some() ||
+                entry.name.to_lowercase().starts_with(&filter_segment.to_lowercase())
+            }
+        })
+        .map(|entry| {
+            let relative = if entry.path.starts_with(&home) {
+                entry.path.strip_prefix(&home).unwrap_or(&entry.path)
+            } else {
+                &entry.path
+            };
+            format!("/host/{}", relative.to_string_lossy().trim_start_matches('/'))
+        })
+        .collect();
+    
+    suggestions.sort();
+    suggestions
+}
+
 
 /// Truncate a string to a maximum length, adding ellipsis if needed
 pub fn truncate(s: &str, max: usize) -> String {
@@ -78,6 +187,49 @@ pub fn default_tab_name(workspace_path: &str) -> String {
         "maestro:workspace".to_string()
     } else {
         format!("maestro:{basename}")
+    }
+}
+
+/// Get the actual home directory path
+/// Tries to get HOME from environment, falls back to resolving /host if needed
+pub fn get_home_directory() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home);
+    }
+    PathBuf::from("/host")
+}
+
+/// Convert a /host path to an absolute filesystem path
+/// If path starts with /host, replaces it with actual home directory
+/// Otherwise returns path as-is
+pub fn resolve_host_path(path: &str) -> PathBuf {
+    let trimmed = path.trim();
+    if trimmed.starts_with("/host") {
+        let home = get_home_directory();
+        let relative = trimmed.strip_prefix("/host").unwrap_or("").trim_start_matches('/');
+        if relative.is_empty() {
+            home
+        } else {
+            home.join(relative)
+        }
+    } else {
+        PathBuf::from(trimmed)
+    }
+}
+
+/// Resolve a workspace path for Zellij API calls
+/// Converts /host paths to absolute paths, returns relative paths as-is
+/// Empty path returns None (Zellij will use default cwd)
+pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    
+    if trimmed.starts_with("/host") {
+        Some(resolve_host_path(trimmed))
+    } else {
+        Some(PathBuf::from(trimmed))
     }
 }
 
@@ -309,5 +461,34 @@ mod tests {
 
         // Invalid input (empty key)
         assert!(parse_env_input("  =value").is_err());
+    }
+
+    #[test]
+    fn test_resolve_workspace_path() {
+        // Empty path returns None
+        assert_eq!(resolve_workspace_path(""), None);
+        assert_eq!(resolve_workspace_path("   "), None);
+
+        // Relative paths returned as-is
+        assert_eq!(
+            resolve_workspace_path("src/maestro"),
+            Some(PathBuf::from("src/maestro"))
+        );
+        assert_eq!(
+            resolve_workspace_path("projects/myapp"),
+            Some(PathBuf::from("projects/myapp"))
+        );
+
+        // Whitespace is trimmed
+        assert_eq!(
+            resolve_workspace_path("  src/maestro  "),
+            Some(PathBuf::from("src/maestro"))
+        );
+
+        // Single directory
+        assert_eq!(
+            resolve_workspace_path("Documents"),
+            Some(PathBuf::from("Documents"))
+        );
     }
 }

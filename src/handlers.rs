@@ -13,7 +13,7 @@ use crate::agent::{default_config_path, is_default_agent, save_agents};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
 use crate::ui::{AgentFormField, Mode, Section, next_field, prev_field};
-use crate::utils::{build_command_with_env, find_agent_by_command, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename};
+use crate::utils::{build_command_with_env, find_agent_by_command, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename, get_home_directory, read_directory};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TabChoice {
@@ -423,10 +423,13 @@ pub fn spawn_agent_pane(
         }
     };
     
+    let resolved_workspace = crate::utils::resolve_workspace_path(&workspace_path);
+    
     let (tab_target, _is_new_tab) = match tab_choice {
         TabChoice::Existing(name) => (name, false),
         TabChoice::New => {
-            new_tab(Some(tab_name.clone()), Some(workspace_path.clone()));
+            let cwd_for_tab = resolved_workspace.as_ref().map(|p| p.to_string_lossy().to_string());
+            new_tab(Some(tab_name.clone()), cwd_for_tab);
             if !model.tab_names().contains(&tab_name) {
                 model.tab_names_mut().push(tab_name.clone());
             }
@@ -437,14 +440,14 @@ pub fn spawn_agent_pane(
     let cmd = build_command_with_env(&agent);
     let mut ctx = BTreeMap::new();
     ctx.insert("pane_title".to_string(), title.clone());
-    if !workspace_path.is_empty() {
-        ctx.insert("cwd".to_string(), workspace_path.clone());
+    if let Some(ref resolved) = resolved_workspace {
+        ctx.insert("cwd".to_string(), resolved.to_string_lossy().to_string());
     }
     ctx.insert("agent".to_string(), agent.name.clone());
 
     let mut command_to_run = CommandToRun::new(cmd.join(" "));
-    if !workspace_path.is_empty() {
-        command_to_run.cwd = Some(PathBuf::from(workspace_path.clone()));
+    if let Some(ref resolved) = resolved_workspace {
+        command_to_run.cwd = Some(resolved.clone());
     }
     open_command_pane(command_to_run, ctx);
 
@@ -889,6 +892,7 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
     match model.mode() {
         Mode::View => handle_key_event_view(model, key),
         Mode::NewPaneWorkspace => handle_key_event_new_pane_workspace(model, key),
+        Mode::NewPaneWorkspaceBrowse => handle_key_event_new_pane_workspace_browse(model, key),
         Mode::NewPaneTabSelect => handle_key_event_new_pane_tab_select(model, key),
         Mode::NewPaneAgentSelect => handle_key_event_new_pane_agent_select(model, key),
         Mode::NewPaneAgentCreate => handle_key_event_agent_form(model, key, true),
@@ -1017,16 +1021,147 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
 
 fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) {
     if handle_text_edit(model.workspace_input_mut(), &key) {
+        *model.browse_selected_idx_mut() = 0;
         return;
     }
+    
+    let input = model.workspace_input().to_string();
+    let suggestions = crate::utils::get_path_suggestions(&input);
+    
     match key.bare_key {
+        BareKey::Up => {
+            if model.browse_selected_idx() > 0 {
+                *model.browse_selected_idx_mut() = model.browse_selected_idx() - 1;
+            }
+        }
+        BareKey::Down => {
+            let max_idx = suggestions.len().saturating_sub(1);
+            if model.browse_selected_idx() < max_idx {
+                *model.browse_selected_idx_mut() = model.browse_selected_idx() + 1;
+            }
+        }
+        BareKey::Tab => {
+            if let Some(suggestion) = suggestions.get(model.browse_selected_idx()) {
+                *model.workspace_input_mut() = suggestion.clone();
+                *model.browse_selected_idx_mut() = 0;
+            }
+        }
         BareKey::Enter => {
+            if let Some(selected) = suggestions.get(model.browse_selected_idx()) {
+                *model.workspace_input_mut() = selected.clone();
+            }
             *model.mode_mut() = Mode::NewPaneTabSelect;
             *model.wizard_tab_filter_mut() = String::new();
             *model.wizard_agent_filter_mut() = String::new();
             *model.wizard_tab_idx_mut() = 0;
             *model.wizard_agent_idx_mut() = 0;
             reset_status(model);
+        }
+        BareKey::Esc => cancel_to_view(model),
+        _ => {}
+    }
+}
+
+fn handle_key_event_new_pane_workspace_browse(model: &mut Model, key: KeyWithModifier) {
+    let current_path = if model.browse_path().is_empty() {
+        "/host".to_string()
+    } else {
+        model.browse_path().to_string()
+    };
+    
+    let dir_path = if current_path == "/host" {
+        get_home_directory()
+    } else {
+        std::path::PathBuf::from(&current_path)
+    };
+    
+    let entries = match read_directory(&dir_path) {
+        Ok(entries) => entries,
+        Err(_) => {
+            if key.bare_key == BareKey::Esc {
+                cancel_to_view(model);
+            }
+            return;
+        }
+    };
+    
+    let filter_text = model.browse_filter();
+    let filtered_entries: Vec<&crate::utils::DirEntry> = if filter_text.is_empty() {
+        entries.iter().collect()
+    } else {
+        use fuzzy_matcher::FuzzyMatcher;
+        use fuzzy_matcher::skim::SkimMatcherV2;
+        let matcher = SkimMatcherV2::default();
+        entries.iter()
+            .filter(|entry| matcher.fuzzy_match(&entry.name, filter_text).is_some())
+            .collect()
+    };
+    
+    if handle_text_edit(model.browse_filter_mut(), &key) {
+        *model.browse_selected_idx_mut() = 0;
+        return;
+    }
+    
+    match key.bare_key {
+        BareKey::Up => {
+            if model.browse_selected_idx() > 0 {
+                *model.browse_selected_idx_mut() = model.browse_selected_idx() - 1;
+            }
+        }
+        BareKey::Down => {
+            let max_idx = filtered_entries.len().saturating_sub(1);
+            if model.browse_selected_idx() < max_idx {
+                *model.browse_selected_idx_mut() = model.browse_selected_idx() + 1;
+            }
+        }
+        BareKey::Right | BareKey::Tab => {
+            if let Some(selected) = filtered_entries.get(model.browse_selected_idx()) {
+                let selected_path = selected.path.to_string_lossy().to_string();
+                let home = get_home_directory();
+                if selected_path == home.to_string_lossy() {
+                    *model.browse_path_mut() = "/host".to_string();
+                } else {
+                    *model.browse_path_mut() = selected_path;
+                }
+                *model.browse_selected_idx_mut() = 0;
+                *model.browse_filter_mut() = String::new();
+            }
+        }
+        BareKey::Enter => {
+            if let Some(selected) = filtered_entries.get(model.browse_selected_idx()) {
+                let selected_path = selected.path.to_string_lossy().to_string();
+                let home = get_home_directory().to_string_lossy().to_string();
+                let workspace_path = if selected_path == home {
+                    "/host".to_string()
+                } else if selected_path.starts_with(&home) {
+                    let relative = selected_path.strip_prefix(&home).unwrap_or("").trim_start_matches('/');
+                    format!("/host/{relative}")
+                } else {
+                    selected_path
+                };
+                *model.workspace_input_mut() = workspace_path;
+                *model.mode_mut() = Mode::NewPaneTabSelect;
+                *model.wizard_tab_filter_mut() = String::new();
+                *model.wizard_agent_filter_mut() = String::new();
+                *model.wizard_tab_idx_mut() = 0;
+                *model.wizard_agent_idx_mut() = 0;
+                reset_status(model);
+            }
+        }
+        BareKey::Char('h') | BareKey::Backspace => {
+            if current_path != "/host" {
+                let parent = dir_path.parent();
+                if let Some(parent_path) = parent {
+                    let home = get_home_directory();
+                    if parent_path == home {
+                        *model.browse_path_mut() = "/host".to_string();
+                    } else {
+                        *model.browse_path_mut() = parent_path.to_string_lossy().to_string();
+                    }
+                    *model.browse_selected_idx_mut() = 0;
+                    *model.browse_filter_mut() = String::new();
+                }
+            }
         }
         BareKey::Esc => cancel_to_view(model),
         _ => {}
@@ -1270,6 +1405,7 @@ fn start_new_pane_workspace(model: &mut Model) {
     *model.custom_tab_name_mut() = None;
     *model.wizard_tab_filter_mut() = String::new();
     *model.wizard_agent_filter_mut() = String::new();
+    *model.browse_selected_idx_mut() = 0;
     *model.mode_mut() = Mode::NewPaneWorkspace;
     *model.wizard_agent_idx_mut() = 0;
     *model.wizard_tab_idx_mut() = 0;
