@@ -8,12 +8,14 @@ use zellij_tile::prelude::{
     BareKey, KeyModifier, KeyWithModifier, PaneId, PaneManifest, PermissionStatus, TabInfo,
 };
 
-use crate::agent::{Agent, AgentPane, PaneStatus};
 use crate::agent::{default_config_path, is_default_agent, save_agents};
+use crate::agent::{Agent, AgentPane, PaneStatus};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
-use crate::ui::{AgentFormField, Mode, Section, next_field, prev_field};
-use crate::utils::{build_command_with_env, find_agent_by_command, is_maestro_tab, parse_env_input, parse_title_hint, workspace_basename};
+use crate::ui::{next_field, prev_field, AgentFormField, Mode, Section};
+use crate::utils::{
+    build_command_with_env, find_agent_by_command, parse_env_input, workspace_basename,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TabChoice {
@@ -22,21 +24,22 @@ pub enum TabChoice {
 }
 
 fn selected_tab_choice(model: &mut Model) -> TabChoice {
-    use fuzzy_matcher::FuzzyMatcher;
     use fuzzy_matcher::skim::SkimMatcherV2;
-    
+    use fuzzy_matcher::FuzzyMatcher;
+
     let filter_text = model.wizard_tab_filter();
     let filtered_tabs: Vec<(usize, &String)> = if filter_text.is_empty() {
         model.tab_names().iter().enumerate().collect()
     } else {
         let matcher = SkimMatcherV2::default();
-        model.tab_names()
+        model
+            .tab_names()
             .iter()
             .enumerate()
             .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
             .collect()
     };
-    
+
     let idx = model.wizard_tab_idx();
     if idx < filtered_tabs.len() {
         let (original_idx, _) = filtered_tabs[idx];
@@ -90,8 +93,9 @@ pub fn apply_tab_update(model: &mut Model, tabs: Vec<TabInfo>) {
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
     let tab_names_ref = &tab_names;
     *model.tab_names_mut() = tab_names.clone();
-    
-    model.agent_panes_mut()
+
+    model
+        .agent_panes_mut()
         .retain(|p| p.pane_id.is_some() || tab_names_ref.contains(&p.tab_name));
     model.clamp_selections();
 }
@@ -122,31 +126,13 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
             }
 
             let title = pane.title.clone();
-
-            if is_maestro_tab(&title) {
-                let (agent_name, workspace_path) = parse_title_hint(&title)
-                    .unwrap_or_default();
-                model.agent_panes_mut().push(AgentPane {
-                    pane_title: title,
-                    tab_name: tab_name.clone(),
-                    pane_id: Some(pane.id),
-                    workspace_path,
-                    agent_name,
-                    status: if pane.exited {
-                        PaneStatus::Exited(pane.exit_status)
-                    } else {
-                        PaneStatus::Running
-                    },
-                });
-                continue;
-            }
+            let command_hint = pane.terminal_command.as_deref().unwrap_or(&title);
 
             if !pane.is_plugin {
-                if let Some(agent) = find_agent_by_command(model.agents(), &title) {
+                if let Some(agent) = find_agent_by_command(model.agents(), command_hint) {
                     let agent_name = agent.name.clone();
-                    let reconstructed_title = format!("maestro:{agent_name}::recovered");
                     model.agent_panes_mut().push(AgentPane {
-                        pane_title: reconstructed_title,
+                        pane_title: title,
                         tab_name: tab_name.clone(),
                         pane_id: Some(pane.id),
                         workspace_path: String::new(),
@@ -168,7 +154,7 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{pane_id}"));
+        .unwrap_or_else(|| format!("pane:{pane_id}"));
     let workspace_path = ctx.get("cwd").cloned().unwrap_or_default();
     let agent_name = ctx.get("agent").cloned().unwrap_or_default();
 
@@ -245,44 +231,25 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                 Vec::new()
             };
 
-                let tab_names_ref = model.tab_names().to_vec();
-                for pane in pane_list {
-                    if let Some(existing) = model
-                        .agent_panes_mut()
-                        .iter_mut()
-                        .find(|p| p.pane_id == Some(pane.id))
+            let tab_names_ref = model.tab_names().to_vec();
+            for pane in pane_list {
+                if let Some(existing) = model
+                    .agent_panes_mut()
+                    .iter_mut()
+                    .find(|p| p.pane_id == Some(pane.id))
+                {
+                    existing.status = if pane.exited {
+                        PaneStatus::Exited(pane.exit_status)
+                    } else {
+                        PaneStatus::Running
+                    };
+
+                    if (existing.tab_name.is_empty()
+                        || (!tab_name.is_empty() && !tab_names_ref.contains(&existing.tab_name)))
+                        && !tab_name.is_empty()
                     {
-                        existing.status = if pane.exited {
-                            PaneStatus::Exited(pane.exit_status)
-                        } else {
-                            PaneStatus::Running
-                        };
-
-                        if (existing.tab_name.is_empty()
-                            || (!tab_name.is_empty()
-                                && !tab_names_ref.contains(&existing.tab_name)))
-                            && !tab_name.is_empty()
-                        {
-                            existing.tab_name = tab_name.clone();
-                        }
-                    continue;
-                }
-
-                if is_maestro_tab(&pane.title) {
-                    let (agent_name, workspace_path) = parse_title_hint(&pane.title)
-                        .unwrap_or_default();
-                    model.agent_panes_mut().push(AgentPane {
-                        pane_title: pane.title.clone(),
-                        tab_name: tab_name.clone(),
-                        pane_id: Some(pane.id),
-                        workspace_path,
-                        agent_name,
-                        status: if pane.exited {
-                            PaneStatus::Exited(pane.exit_status)
-                        } else {
-                            PaneStatus::Running
-                        },
-                    });
+                        existing.tab_name = tab_name.clone();
+                    }
                     continue;
                 }
 
@@ -301,11 +268,11 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                 }
 
                 if !pane.is_plugin {
-                    if let Some(agent) = find_agent_by_command(model.agents(), &pane.title) {
+                    let command_hint = pane.terminal_command.as_deref().unwrap_or(&pane.title);
+                    if let Some(agent) = find_agent_by_command(model.agents(), command_hint) {
                         let agent_name = agent.name.clone();
-                        let reconstructed_title = format!("maestro:{agent_name}::recovered");
                         model.agent_panes_mut().push(AgentPane {
-                            pane_title: reconstructed_title,
+                            pane_title: pane.title.clone(),
                             tab_name: tab_name.clone(),
                             pane_id: Some(pane.id),
                             workspace_path: String::new(),
@@ -333,7 +300,7 @@ pub fn handle_command_pane_exited(
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{pane_id}"));
+        .unwrap_or_else(|| format!("pane:{pane_id}"));
     if let Some(pane) = model
         .agent_panes_mut()
         .iter_mut()
@@ -348,7 +315,7 @@ pub fn handle_command_pane_rerun(model: &mut Model, pane_id: u32, ctx: BTreeMap<
     let title = ctx
         .get("pane_title")
         .cloned()
-        .unwrap_or_else(|| format!("maestro:{pane_id}"));
+        .unwrap_or_else(|| format!("pane:{pane_id}"));
     if let Some(pane) = model
         .agent_panes_mut()
         .iter_mut()
@@ -364,7 +331,7 @@ pub fn handle_session_update(model: &mut Model, sessions: Vec<SessionInfo>) {
         .iter()
         .find(|s| s.is_current_session)
         .map(|s| s.name.clone());
-    
+
     if let Some(new_session_name) = current_session_name {
         if let Some(old_session_name) = model.session_name() {
             if old_session_name != &new_session_name {
@@ -373,7 +340,7 @@ pub fn handle_session_update(model: &mut Model, sessions: Vec<SessionInfo>) {
         }
         *model.session_name_mut() = Some(new_session_name);
     }
-    
+
     rebuild_from_session_infos(model, &sessions);
 }
 
@@ -402,12 +369,13 @@ pub fn spawn_agent_pane(
             return;
         }
     };
-    let title = format!(
-        "maestro:{}:{}:{}",
-        agent.name,
-        workspace_basename(&workspace_path),
-        Uuid::new_v4()
-    );
+    let workspace_label = workspace_basename(&workspace_path);
+    let title_label = if workspace_label.is_empty() {
+        agent.name.clone()
+    } else {
+        workspace_label
+    };
+    let title = format!("{}:{}", title_label, Uuid::new_v4());
     let tab_name = match &tab_choice {
         TabChoice::Existing(name) => name.clone(),
         TabChoice::New => {
@@ -415,20 +383,23 @@ pub fn spawn_agent_pane(
             if !filter_text.trim().is_empty() {
                 filter_text.to_string()
             } else {
-                model.custom_tab_name()
+                model
+                    .custom_tab_name()
                     .filter(|s| !s.trim().is_empty())
                     .cloned()
                     .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path))
             }
         }
     };
-    
+
     let resolved_workspace = crate::utils::resolve_workspace_path(&workspace_path);
-    
+
     let (tab_target, _is_new_tab) = match tab_choice {
         TabChoice::Existing(name) => (name, false),
         TabChoice::New => {
-            let cwd_for_tab = resolved_workspace.as_ref().map(|p| p.to_string_lossy().to_string());
+            let cwd_for_tab = resolved_workspace
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
             new_tab(Some(tab_name.clone()), cwd_for_tab);
             if !model.tab_names().contains(&tab_name) {
                 model.tab_names_mut().push(tab_name.clone());
@@ -554,8 +525,7 @@ fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     if cmd_parts.is_empty() {
         return Err(MaestroError::CommandRequired);
     }
-    let env = parse_env_input(model.agent_env_input())
-        .map_err(MaestroError::EnvParse)?;
+    let env = parse_env_input(model.agent_env_input()).map_err(MaestroError::EnvParse)?;
     let note = if model.agent_note_input().trim().is_empty() {
         None
     } else {
@@ -780,7 +750,10 @@ mod tests {
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MaestroError::AgentNameRequired));
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::AgentNameRequired
+        ));
     }
 
     #[test]
@@ -1025,10 +998,10 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
         *model.browse_selected_idx_mut() = 0;
         return;
     }
-    
+
     let input = model.workspace_input().to_string();
     let suggestions = crate::utils::get_path_suggestions(&input);
-    
+
     match key.bare_key {
         BareKey::Up => {
             if model.browse_selected_idx() > 0 {
@@ -1064,30 +1037,38 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
 }
 
 fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier) {
-    use fuzzy_matcher::FuzzyMatcher;
     use fuzzy_matcher::skim::SkimMatcherV2;
-    
+    use fuzzy_matcher::FuzzyMatcher;
+
     let filter_text = model.wizard_tab_filter();
     let filtered_tabs: Vec<(usize, &String)> = if filter_text.is_empty() {
         model.tab_names().iter().enumerate().collect()
     } else {
         let matcher = SkimMatcherV2::default();
-        model.tab_names()
+        model
+            .tab_names()
             .iter()
             .enumerate()
             .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
             .collect()
     };
-    
-    let has_exact_match = filtered_tabs.iter().any(|(_, tab)| tab.eq_ignore_ascii_case(filter_text));
+
+    let has_exact_match = filtered_tabs
+        .iter()
+        .any(|(_, tab)| tab.eq_ignore_ascii_case(filter_text));
     let show_new_tab = !filter_text.is_empty() && !has_exact_match;
-    let choices = filtered_tabs.len() + if show_new_tab || filter_text.is_empty() { 1 } else { 0 };
-    
+    let choices = filtered_tabs.len()
+        + if show_new_tab || filter_text.is_empty() {
+            1
+        } else {
+            0
+        };
+
     if handle_text_edit(model.wizard_tab_filter_mut(), &key) {
         *model.wizard_tab_idx_mut() = 0;
         return;
     }
-    
+
     match key.bare_key {
         BareKey::Up => {
             if model.wizard_tab_idx() > 0 {
@@ -1120,30 +1101,38 @@ fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier)
 }
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
-    use fuzzy_matcher::FuzzyMatcher;
     use fuzzy_matcher::skim::SkimMatcherV2;
-    
+    use fuzzy_matcher::FuzzyMatcher;
+
     if handle_text_edit(model.wizard_agent_filter_mut(), &key) {
         *model.wizard_agent_idx_mut() = 0;
         return;
     }
-    
+
     let filter_text = model.wizard_agent_filter();
     let filtered_agents: Vec<(usize, &Agent)> = if filter_text.is_empty() {
         model.agents().iter().enumerate().collect()
     } else {
         let matcher = SkimMatcherV2::default();
-        model.agents()
+        model
+            .agents()
             .iter()
             .enumerate()
             .filter(|(_, agent)| matcher.fuzzy_match(&agent.name, filter_text).is_some())
             .collect()
     };
-    
-    let has_exact_match = filtered_agents.iter().any(|(_, agent)| agent.name.eq_ignore_ascii_case(filter_text));
+
+    let has_exact_match = filtered_agents
+        .iter()
+        .any(|(_, agent)| agent.name.eq_ignore_ascii_case(filter_text));
     let show_new_agent = !filter_text.is_empty() && !has_exact_match;
-    let choices = filtered_agents.len() + if show_new_agent || filter_text.is_empty() { 1 } else { 0 };
-    
+    let choices = filtered_agents.len()
+        + if show_new_agent || filter_text.is_empty() {
+            1
+        } else {
+            0
+        };
+
     match key.bare_key {
         BareKey::Up => {
             if model.wizard_agent_idx() > 0 {
@@ -1192,8 +1181,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_a
     if handle_form_text(model, &key) {
         return;
     }
-    let shift_tab =
-        key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
+    let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
     match key.bare_key {
         BareKey::Tab if shift_tab => {
             *model.agent_form_field_mut() = prev_field(model.agent_form_field());
@@ -1253,8 +1241,9 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                         return;
                     }
                     model.agents_mut().remove(idx);
-                    *model.selected_agent_mut() =
-                        model.selected_agent().min(model.agents().len().saturating_sub(1));
+                    *model.selected_agent_mut() = model
+                        .selected_agent()
+                        .min(model.agents().len().saturating_sub(1));
                     match persist_agents(model) {
                         Ok(path) => {
                             *model.status_message_mut() =
@@ -1324,7 +1313,9 @@ fn start_agent_edit(model: &mut Model) {
         *model.error_message_mut() = "no agents to edit".to_string();
         return;
     }
-    let idx = model.selected_agent().min(model.agents().len().saturating_sub(1));
+    let idx = model
+        .selected_agent()
+        .min(model.agents().len().saturating_sub(1));
     if let Some(agent) = model.agents().get(idx) {
         let agent_name = agent.name.clone();
         let agent_command = agent.command.join(" ");
@@ -1356,7 +1347,9 @@ fn start_agent_delete_confirm(model: &mut Model) {
         *model.error_message_mut() = "no agents to delete".to_string();
         return;
     }
-    let idx = model.selected_agent().min(model.agents().len().saturating_sub(1));
+    let idx = model
+        .selected_agent()
+        .min(model.agents().len().saturating_sub(1));
     *model.form_target_agent_mut() = Some(idx);
     *model.mode_mut() = Mode::DeleteConfirm;
     reset_status(model);

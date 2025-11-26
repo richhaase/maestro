@@ -20,12 +20,10 @@ const REQUESTED_PERMISSIONS: &[PermissionType] = &[
     PermissionType::OpenTerminalsOrPlugins,
 ];
 
-
 #[derive(Default)]
 pub struct Maestro {
     model: Model,
 }
-
 
 impl ZellijPlugin for Maestro {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
@@ -109,7 +107,5 @@ impl ZellijPlugin for Maestro {
         print!("{}", render_ui(&self.model, rows, cols));
     }
 }
-
-
 
 register_plugin!(Maestro);

@@ -317,7 +317,7 @@ mod tests {
 
     fn create_test_pane(agent_name: &str, tab_name: &str) -> AgentPane {
         AgentPane {
-            pane_title: format!("maestro:{}", agent_name),
+            pane_title: format!("{}", agent_name),
             tab_name: tab_name.to_string(),
             pane_id: Some(1),
             workspace_path: String::new(),
@@ -341,7 +341,9 @@ mod tests {
         let mut model = Model::default();
         model.agents_mut().push(create_test_agent("agent1"));
         model.agents_mut().push(create_test_agent("agent2"));
-        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("agent1", "tab1"));
         model.selection.selected_pane = 10;
         model.selection.selected_agent = 10;
         model.clamp_selections();
@@ -352,9 +354,15 @@ mod tests {
     #[test]
     fn test_clamp_selections_with_filter() {
         let mut model = Model::default();
-        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
-        model.agent_panes_mut().push(create_test_pane("agent2", "tab2"));
-        model.agent_panes_mut().push(create_test_pane("other", "tab3"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("agent1", "tab1"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("agent2", "tab2"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("other", "tab3"));
         *model.filter_text_mut() = "agent".to_string();
         model.selection.selected_pane = 5;
         model.clamp_selections();
@@ -364,8 +372,12 @@ mod tests {
     #[test]
     fn test_clamp_selections_filter_matches_tab_name() {
         let mut model = Model::default();
-        model.agent_panes_mut().push(create_test_pane("other", "agent-tab"));
-        model.agent_panes_mut().push(create_test_pane("other", "other-tab"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("other", "agent-tab"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("other", "other-tab"));
         *model.filter_text_mut() = "agent".to_string();
         model.selection.selected_pane = 0;
         model.clamp_selections();
@@ -377,7 +389,9 @@ mod tests {
         let mut model = Model::default();
         model.agents_mut().push(create_test_agent("agent1"));
         model.agents_mut().push(create_test_agent("agent2"));
-        model.agent_panes_mut().push(create_test_pane("agent1", "tab1"));
+        model
+            .agent_panes_mut()
+            .push(create_test_pane("agent1", "tab1"));
         model.selection.selected_pane = 0;
         model.selection.selected_agent = 1;
         model.clamp_selections();

@@ -116,13 +116,11 @@ pub fn is_default_agent(name: &str) -> bool {
 pub fn load_agents_default() -> Result<Vec<Agent>> {
     let path = default_config_path()?;
     let user_agents = load_agents(&path)?;
-    
+
     let mut merged = default_agents();
-    let default_names: std::collections::BTreeSet<String> = merged
-        .iter()
-        .map(|a| a.name.clone())
-        .collect();
-    
+    let default_names: std::collections::BTreeSet<String> =
+        merged.iter().map(|a| a.name.clone()).collect();
+
     for user_agent in user_agents {
         if default_names.contains(&user_agent.name) {
             if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
@@ -132,7 +130,7 @@ pub fn load_agents_default() -> Result<Vec<Agent>> {
             merged.push(user_agent);
         }
     }
-    
+
     Ok(merged)
 }
 
@@ -378,7 +376,10 @@ mod tests {
         assert_eq!(loaded[0].name, "full_agent");
         assert_eq!(loaded[0].command, vec!["cmd", "arg1", "arg2"]);
         assert_eq!(loaded[0].env.as_ref().unwrap().len(), 2);
-        assert_eq!(loaded[0].note, Some("A test agent with all fields".to_string()));
+        assert_eq!(
+            loaded[0].note,
+            Some("A test agent with all fields".to_string())
+        );
     }
 
     #[test]
@@ -479,17 +480,15 @@ agent name="duplicate" {
         ];
 
         save_agents(path, &user_agents).unwrap();
-        
+
         let loaded = load_agents(path).unwrap();
         assert_eq!(loaded.len(), 2);
-        
+
         let defaults = default_agents();
         let mut merged = defaults.clone();
-        let default_names: std::collections::BTreeSet<String> = merged
-            .iter()
-            .map(|a| a.name.clone())
-            .collect();
-        
+        let default_names: std::collections::BTreeSet<String> =
+            merged.iter().map(|a| a.name.clone()).collect();
+
         for user_agent in loaded {
             if default_names.contains(&user_agent.name) {
                 if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
@@ -499,7 +498,7 @@ agent name="duplicate" {
                 merged.push(user_agent);
             }
         }
-        
+
         assert_eq!(merged.len(), 5);
         let cursor_agent = merged.iter().find(|a| a.name == "cursor").unwrap();
         assert_eq!(cursor_agent.command, vec!["custom-cursor"]);
@@ -534,9 +533,9 @@ agent name="duplicate" {
             .filter(|a| !is_default_agent(&a.name))
             .cloned()
             .collect();
-        
+
         save_agents(path, &user_agents).unwrap();
-        
+
         let saved = load_agents(path).unwrap();
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].name, "custom");

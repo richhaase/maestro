@@ -15,11 +15,13 @@ pub struct DirEntry {
 pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>, String> {
     let entries = fs::read_dir(path).map_err(|e| format!("read directory: {e}"))?;
     let mut dirs = Vec::new();
-    
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("read entry: {e}"))?;
-        let metadata = entry.metadata().map_err(|e| format!("read metadata: {e}"))?;
-        
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("read metadata: {e}"))?;
+
         if metadata.is_dir() {
             let name = entry.file_name().to_string_lossy().to_string();
             let path = entry.path();
@@ -30,7 +32,7 @@ pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>, String> {
             });
         }
     }
-    
+
     dirs.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(dirs)
 }
@@ -38,16 +40,16 @@ pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>, String> {
 /// Get autocomplete suggestions for a partial path
 /// Returns directories that match the last segment of the path
 pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
-    use fuzzy_matcher::FuzzyMatcher;
     use fuzzy_matcher::skim::SkimMatcherV2;
-    
+    use fuzzy_matcher::FuzzyMatcher;
+
     let trimmed = partial_path.trim();
     if trimmed.is_empty() {
         return Vec::new();
     }
-    
+
     let home = get_home_directory();
-    
+
     let (base_path, filter_segment) = if trimmed == "/host" || trimmed == "/host/" {
         (home.clone(), String::new())
     } else if trimmed.starts_with("/host/") {
@@ -78,22 +80,25 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
             (home.join(base), filter)
         }
     };
-    
+
     let entries = match read_directory(&base_path) {
         Ok(e) => e,
         Err(_) => return Vec::new(),
     };
-    
+
     let matcher = SkimMatcherV2::default();
-    
+
     let mut suggestions: Vec<String> = entries
         .iter()
         .filter(|entry| {
             if filter_segment.is_empty() {
                 true
             } else {
-                matcher.fuzzy_match(&entry.name, &filter_segment).is_some() ||
-                entry.name.to_lowercase().starts_with(&filter_segment.to_lowercase())
+                matcher.fuzzy_match(&entry.name, &filter_segment).is_some()
+                    || entry
+                        .name
+                        .to_lowercase()
+                        .starts_with(&filter_segment.to_lowercase())
             }
         })
         .map(|entry| {
@@ -102,14 +107,16 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
             } else {
                 &entry.path
             };
-            format!("/host/{}", relative.to_string_lossy().trim_start_matches('/'))
+            format!(
+                "/host/{}",
+                relative.to_string_lossy().trim_start_matches('/')
+            )
         })
         .collect();
-    
+
     suggestions.sort();
     suggestions
 }
-
 
 /// Truncate a string to a maximum length, adding ellipsis if needed
 pub fn truncate(s: &str, max: usize) -> String {
@@ -184,9 +191,9 @@ pub fn workspace_basename(path: &str) -> String {
 pub fn default_tab_name(workspace_path: &str) -> String {
     let basename = workspace_basename(workspace_path);
     if basename.is_empty() {
-        "maestro:workspace".to_string()
+        "workspace".to_string()
     } else {
-        format!("maestro:{basename}")
+        basename
     }
 }
 
@@ -207,7 +214,7 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     if trimmed.is_empty() {
         return None;
     }
-    
+
     if trimmed.starts_with("/host/") {
         let relative = trimmed.strip_prefix("/host/").unwrap_or("");
         if relative.is_empty() {
@@ -222,25 +229,6 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     }
 }
 
-/// Check if a pane title is a Maestro-managed pane
-pub fn is_maestro_tab(title: &str) -> bool {
-    title.starts_with("maestro:")
-}
-
-/// Parse agent name and workspace hint from a Maestro pane title
-pub fn parse_title_hint(title: &str) -> Option<(String, String)> {
-    if !is_maestro_tab(title) {
-        return None;
-    }
-    let parts: Vec<&str> = title.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let agent = parts.get(1).unwrap_or(&"").to_string();
-    let workspace_hint = parts.get(2).unwrap_or(&"").to_string();
-    Some((agent, workspace_hint))
-}
-
 /// Find an agent by matching the pane title to the agent's command
 pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
     let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
@@ -249,8 +237,7 @@ pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Optio
             return false;
         }
         let first_cmd = &agent.command[0];
-        first_cmd.eq_ignore_ascii_case(title_base)
-            || title_base.eq_ignore_ascii_case(&agent.name)
+        first_cmd.eq_ignore_ascii_case(title_base) || title_base.eq_ignore_ascii_case(&agent.name)
     })
 }
 
@@ -344,33 +331,11 @@ mod tests {
 
     #[test]
     fn test_default_tab_name() {
-        assert_eq!(default_tab_name("/path/to/myapp"), "maestro:myapp");
-        assert_eq!(default_tab_name("/home/user/docs"), "maestro:docs");
-        assert_eq!(default_tab_name("/home/user"), "maestro:user");
-        assert_eq!(default_tab_name(""), "maestro:workspace");
-        assert_eq!(default_tab_name("/"), "maestro:workspace");
-    }
-
-    #[test]
-    fn test_is_maestro_tab() {
-        assert!(is_maestro_tab("maestro:agent:workspace"));
-        assert!(is_maestro_tab("maestro:"));
-        assert!(!is_maestro_tab("not-maestro"));
-        assert!(!is_maestro_tab(""));
-    }
-
-    #[test]
-    fn test_parse_title_hint() {
-        assert_eq!(
-            parse_title_hint("maestro:agent:workspace"),
-            Some(("agent".to_string(), "workspace".to_string()))
-        );
-        assert_eq!(
-            parse_title_hint("maestro:agent:workspace:extra"),
-            Some(("agent".to_string(), "workspace".to_string()))
-        );
-        assert_eq!(parse_title_hint("maestro:agent"), None);
-        assert_eq!(parse_title_hint("not-maestro"), None);
+        assert_eq!(default_tab_name("/path/to/myapp"), "myapp");
+        assert_eq!(default_tab_name("/home/user/docs"), "docs");
+        assert_eq!(default_tab_name("/home/user"), "user");
+        assert_eq!(default_tab_name(""), "workspace");
+        assert_eq!(default_tab_name("/"), "workspace");
     }
 
     #[test]
@@ -407,10 +372,7 @@ mod tests {
         assert_eq!(find_agent_by_command(&agents, "claude"), Some(&agents[1]));
         assert_eq!(find_agent_by_command(&agents, "my-cmd"), Some(&agents[2]));
         assert_eq!(find_agent_by_command(&agents, "unknown"), None);
-        assert_eq!(
-            find_agent_by_command(&agents, "cursor"),
-            Some(&agents[0])
-        );
+        assert_eq!(find_agent_by_command(&agents, "cursor"), Some(&agents[0]));
     }
 
     #[test]
