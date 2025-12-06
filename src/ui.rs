@@ -159,7 +159,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
     match model.mode() {
         Mode::View => None,
         Mode::AgentConfig => {
-            let lines = vec![
+            let lines = [
                 "Agent Configuration".to_string(),
                 "".to_string(),
                 render_agent_management(model, cols),

@@ -261,7 +261,7 @@ mod tests {
 
     fn create_test_pane(agent_name: &str, tab_name: &str) -> AgentPane {
         AgentPane {
-            pane_title: format!("{}", agent_name),
+            pane_title: agent_name.to_string(),
             tab_name: tab_name.to_string(),
             pending_tab_index: None,
             pane_id: Some(1),

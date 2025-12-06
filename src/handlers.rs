@@ -558,268 +558,6 @@ fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::agent::Agent;
-    use crate::model::Model;
-    use zellij_tile::prelude::{BareKey, KeyWithModifier};
-
-    fn create_test_model() -> Model {
-        Model::default()
-    }
-
-    fn create_test_agent(name: &str) -> Agent {
-        Agent {
-            name: name.to_string(),
-            command: vec!["echo".to_string(), name.to_string()],
-            env: None,
-            note: None,
-        }
-    }
-
-    fn char_key(c: char) -> KeyWithModifier {
-        KeyWithModifier {
-            bare_key: BareKey::Char(c),
-            key_modifiers: std::collections::BTreeSet::new(),
-        }
-    }
-
-    fn backspace_key() -> KeyWithModifier {
-        KeyWithModifier {
-            bare_key: BareKey::Backspace,
-            key_modifiers: std::collections::BTreeSet::new(),
-        }
-    }
-
-    fn delete_key() -> KeyWithModifier {
-        KeyWithModifier {
-            bare_key: BareKey::Delete,
-            key_modifiers: std::collections::BTreeSet::new(),
-        }
-    }
-
-    #[test]
-    fn test_derive_tab_name_from_workspace_relative() {
-        let derived = derive_tab_name_from_workspace("src/maestro");
-        assert_eq!(derived, Some("src/maestro".to_string()));
-    }
-
-    #[test]
-    fn test_derive_tab_name_from_workspace_host_prefix() {
-        let derived = derive_tab_name_from_workspace("/host/src/maestro");
-        assert_eq!(derived, Some("src/maestro".to_string()));
-    }
-
-    #[test]
-    fn test_handle_text_edit_char() {
-        let mut target = String::new();
-        let key = char_key('a');
-        assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "a");
-    }
-
-    #[test]
-    fn test_handle_command_pane_opened_uses_ctx_tab_name() {
-        let mut model = create_test_model();
-        model.tab_names_mut().extend([
-            "Tab #1".to_string(),
-            "src/plonk".to_string(),
-        ]);
-        model.agent_panes_mut().push(AgentPane {
-            pane_title: "pane:1".to_string(),
-            tab_name: String::new(),
-            pending_tab_index: None,
-            pane_id: None,
-            workspace_path: String::new(),
-            agent_name: String::new(),
-            status: PaneStatus::Running,
-        });
-        let mut ctx = BTreeMap::new();
-        ctx.insert("pane_title".to_string(), "pane:1".to_string());
-        ctx.insert("tab_name".to_string(), "src/plonk".to_string());
-        handle_command_pane_opened(&mut model, 1, ctx);
-        assert_eq!(model.agent_panes()[0].tab_name, "src/plonk");
-    }
-
-    #[test]
-    fn test_handle_text_edit_backspace() {
-        let mut target = "hello".to_string();
-        let key = backspace_key();
-        assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "hell");
-    }
-
-    #[test]
-    fn test_handle_text_edit_delete() {
-        let mut target = "hello".to_string();
-        let key = delete_key();
-        assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "");
-    }
-
-    #[test]
-    fn test_handle_text_edit_backspace_empty() {
-        let mut target = String::new();
-        let key = backspace_key();
-        assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "");
-    }
-
-    #[test]
-    fn test_handle_form_text_name_field() {
-        let mut model = create_test_model();
-        *model.agent_form_field_mut() = AgentFormField::Name;
-        let key = char_key('t');
-        assert!(handle_form_text(&mut model, &key));
-        assert_eq!(model.agent_name_input(), "t");
-    }
-
-    #[test]
-    fn test_handle_form_text_command_field() {
-        let mut model = create_test_model();
-        *model.agent_form_field_mut() = AgentFormField::Command;
-        let key = char_key('e');
-        assert!(handle_form_text(&mut model, &key));
-        assert_eq!(model.agent_command_input(), "e");
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_valid() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
-        *model.agent_env_input_mut() = "VAR=value".to_string();
-        *model.agent_note_input_mut() = "test note".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_ok());
-        let agent = result.unwrap();
-        assert_eq!(agent.name, "test-agent");
-        assert_eq!(agent.command, vec!["echo", "hello"]);
-        assert!(agent.env.is_some());
-        assert_eq!(agent.note, Some("test note".to_string()));
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_empty_name() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "   ".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            MaestroError::AgentNameRequired
-        ));
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_empty_command() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "   ".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MaestroError::CommandRequired));
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_empty_note() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
-        *model.agent_note_input_mut() = "   ".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_ok());
-        let agent = result.unwrap();
-        assert_eq!(agent.note, None);
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_multiple_command_args() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello world".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_ok());
-        let agent = result.unwrap();
-        assert_eq!(agent.command, vec!["echo", "hello", "world"]);
-    }
-
-    #[test]
-    fn test_apply_agent_create_duplicate() {
-        let mut model = create_test_model();
-        model.agents_mut().push(create_test_agent("existing"));
-        let agent = create_test_agent("existing");
-
-        let result = apply_agent_create(&mut model, agent);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            MaestroError::DuplicateAgentName(_)
-        ));
-    }
-
-    #[test]
-    fn test_apply_agent_edit_no_selection() {
-        let mut model = create_test_model();
-        let agent = create_test_agent("new-agent");
-
-        let result = apply_agent_edit(&mut model, agent);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MaestroError::NoAgentSelected));
-    }
-
-    #[test]
-    fn test_apply_agent_edit_duplicate() {
-        let mut model = create_test_model();
-        model.agents_mut().push(create_test_agent("agent1"));
-        model.agents_mut().push(create_test_agent("agent2"));
-        *model.form_target_agent_mut() = Some(0);
-        let agent = create_test_agent("agent2");
-
-        let result = apply_agent_edit(&mut model, agent);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            MaestroError::DuplicateAgentName(_)
-        ));
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_env_parsing() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
-        *model.agent_env_input_mut() = "VAR1=value1,VAR2=value2".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_ok());
-        let agent = result.unwrap();
-        assert!(agent.env.is_some());
-        let env = agent.env.unwrap();
-        assert_eq!(env.get("VAR1"), Some(&"value1".to_string()));
-        assert_eq!(env.get("VAR2"), Some(&"value2".to_string()));
-    }
-
-    #[test]
-    fn test_build_agent_from_inputs_invalid_env() {
-        let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
-        *model.agent_env_input_mut() = "=value".to_string();
-
-        let result = build_agent_from_inputs(&model);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MaestroError::EnvParse(_)));
-    }
-}
-
 pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
     match model.mode() {
         Mode::View => handle_key_event_view(model, key),
@@ -1233,4 +971,266 @@ fn move_agent_selection(model: &mut Model, delta: isize) {
     *model.selected_agent_mut() = next;
     model.status_message_mut().clear();
     model.error_message_mut().clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::Agent;
+    use crate::model::Model;
+    use zellij_tile::prelude::{BareKey, KeyWithModifier};
+
+    fn create_test_model() -> Model {
+        Model::default()
+    }
+
+    fn create_test_agent(name: &str) -> Agent {
+        Agent {
+            name: name.to_string(),
+            command: vec!["echo".to_string(), name.to_string()],
+            env: None,
+            note: None,
+        }
+    }
+
+    fn char_key(c: char) -> KeyWithModifier {
+        KeyWithModifier {
+            bare_key: BareKey::Char(c),
+            key_modifiers: std::collections::BTreeSet::new(),
+        }
+    }
+
+    fn backspace_key() -> KeyWithModifier {
+        KeyWithModifier {
+            bare_key: BareKey::Backspace,
+            key_modifiers: std::collections::BTreeSet::new(),
+        }
+    }
+
+    fn delete_key() -> KeyWithModifier {
+        KeyWithModifier {
+            bare_key: BareKey::Delete,
+            key_modifiers: std::collections::BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn test_derive_tab_name_from_workspace_relative() {
+        let derived = derive_tab_name_from_workspace("src/maestro");
+        assert_eq!(derived, Some("src/maestro".to_string()));
+    }
+
+    #[test]
+    fn test_derive_tab_name_from_workspace_host_prefix() {
+        let derived = derive_tab_name_from_workspace("/host/src/maestro");
+        assert_eq!(derived, Some("src/maestro".to_string()));
+    }
+
+    #[test]
+    fn test_handle_text_edit_char() {
+        let mut target = String::new();
+        let key = char_key('a');
+        assert!(handle_text_edit(&mut target, &key));
+        assert_eq!(target, "a");
+    }
+
+    #[test]
+    fn test_handle_command_pane_opened_uses_ctx_tab_name() {
+        let mut model = create_test_model();
+        model.tab_names_mut().extend([
+            "Tab #1".to_string(),
+            "src/plonk".to_string(),
+        ]);
+        model.agent_panes_mut().push(AgentPane {
+            pane_title: "pane:1".to_string(),
+            tab_name: String::new(),
+            pending_tab_index: None,
+            pane_id: None,
+            workspace_path: String::new(),
+            agent_name: String::new(),
+            status: PaneStatus::Running,
+        });
+        let mut ctx = BTreeMap::new();
+        ctx.insert("pane_title".to_string(), "pane:1".to_string());
+        ctx.insert("tab_name".to_string(), "src/plonk".to_string());
+        handle_command_pane_opened(&mut model, 1, ctx);
+        assert_eq!(model.agent_panes()[0].tab_name, "src/plonk");
+    }
+
+    #[test]
+    fn test_handle_text_edit_backspace() {
+        let mut target = "hello".to_string();
+        let key = backspace_key();
+        assert!(handle_text_edit(&mut target, &key));
+        assert_eq!(target, "hell");
+    }
+
+    #[test]
+    fn test_handle_text_edit_delete() {
+        let mut target = "hello".to_string();
+        let key = delete_key();
+        assert!(handle_text_edit(&mut target, &key));
+        assert_eq!(target, "");
+    }
+
+    #[test]
+    fn test_handle_text_edit_backspace_empty() {
+        let mut target = String::new();
+        let key = backspace_key();
+        assert!(handle_text_edit(&mut target, &key));
+        assert_eq!(target, "");
+    }
+
+    #[test]
+    fn test_handle_form_text_name_field() {
+        let mut model = create_test_model();
+        *model.agent_form_field_mut() = AgentFormField::Name;
+        let key = char_key('t');
+        assert!(handle_form_text(&mut model, &key));
+        assert_eq!(model.agent_name_input(), "t");
+    }
+
+    #[test]
+    fn test_handle_form_text_command_field() {
+        let mut model = create_test_model();
+        *model.agent_form_field_mut() = AgentFormField::Command;
+        let key = char_key('e');
+        assert!(handle_form_text(&mut model, &key));
+        assert_eq!(model.agent_command_input(), "e");
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_valid() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_env_input_mut() = "VAR=value".to_string();
+        *model.agent_note_input_mut() = "test note".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(agent.name, "test-agent");
+        assert_eq!(agent.command, vec!["echo", "hello"]);
+        assert!(agent.env.is_some());
+        assert_eq!(agent.note, Some("test note".to_string()));
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_empty_name() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "   ".to_string();
+        *model.agent_command_input_mut() = "echo hello".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::AgentNameRequired
+        ));
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_empty_command() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "   ".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MaestroError::CommandRequired));
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_empty_note() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_note_input_mut() = "   ".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(agent.note, None);
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_multiple_command_args() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo hello world".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(agent.command, vec!["echo", "hello", "world"]);
+    }
+
+    #[test]
+    fn test_apply_agent_create_duplicate() {
+        let mut model = create_test_model();
+        model.agents_mut().push(create_test_agent("existing"));
+        let agent = create_test_agent("existing");
+
+        let result = apply_agent_create(&mut model, agent);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::DuplicateAgentName(_)
+        ));
+    }
+
+    #[test]
+    fn test_apply_agent_edit_no_selection() {
+        let mut model = create_test_model();
+        let agent = create_test_agent("new-agent");
+
+        let result = apply_agent_edit(&mut model, agent);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MaestroError::NoAgentSelected));
+    }
+
+    #[test]
+    fn test_apply_agent_edit_duplicate() {
+        let mut model = create_test_model();
+        model.agents_mut().push(create_test_agent("agent1"));
+        model.agents_mut().push(create_test_agent("agent2"));
+        *model.form_target_agent_mut() = Some(0);
+        let agent = create_test_agent("agent2");
+
+        let result = apply_agent_edit(&mut model, agent);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::DuplicateAgentName(_)
+        ));
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_env_parsing() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_env_input_mut() = "VAR1=value1,VAR2=value2".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert!(agent.env.is_some());
+        let env = agent.env.unwrap();
+        assert_eq!(env.get("VAR1"), Some(&"value1".to_string()));
+        assert_eq!(env.get("VAR2"), Some(&"value2".to_string()));
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_invalid_env() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_env_input_mut() = "=value".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), MaestroError::EnvParse(_)));
+    }
 }
