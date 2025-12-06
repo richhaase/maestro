@@ -212,8 +212,6 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 }
             }
 
-            lines.push("".to_string());
-            lines.push("[↑/↓] select suggestion • Enter continue • Esc cancel".to_string());
             Some(lines.join("\n"))
         }
         Mode::NewPaneAgentSelect => {
@@ -350,7 +348,7 @@ fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode() {
         Mode::View => "j/k move • Enter focus • d kill • n new • c config • Esc close",
         Mode::AgentConfig => "j/k move • a add • e edit • d delete • Esc back",
-        Mode::NewPaneWorkspace => "[Enter] continue • Esc cancel • type to edit path",
+        Mode::NewPaneWorkspace => "[↑/↓] select • Enter continue • Esc cancel",
         Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
         Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
