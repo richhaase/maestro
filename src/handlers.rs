@@ -89,7 +89,8 @@ pub fn handle_permission_result(model: &mut Model, status: PermissionStatus) {
     }
 }
 
-pub fn apply_tab_update(model: &mut Model, tabs: Vec<TabInfo>) {
+pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
+    tabs.sort_by_key(|t| t.position);
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
     let tab_names_ref = &tab_names;
     *model.tab_names_mut() = tab_names.clone();
@@ -911,15 +912,35 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
                 model.clamp_selections();
                 return;
             }
+            BareKey::Enter => {
+                // Allow launching from filter mode
+                match model.focused_section() {
+                    Section::AgentPanes => {
+                        let idx = model.selected_pane();
+                        focus_selected(model, idx);
+                        close_self();
+                    }
+                    Section::Agents => {
+                        if model.selected_agent() < model.agents().len() {
+                            let agent_name = model.agents()[model.selected_agent()].name.clone();
+                            *model.quick_launch_agent_name_mut() = Some(agent_name);
+                            start_new_pane_workspace(model);
+                        }
+                    }
+                }
+                return;
+            }
             _ => {}
         }
+        return;
     }
 
+    // Normal Mode
     match key.bare_key {
-        BareKey::Down => {
+        BareKey::Char('j') | BareKey::Down => {
             move_selection(model, model.focused_section(), 1);
         }
-        BareKey::Up => {
+        BareKey::Char('k') | BareKey::Up => {
             move_selection(model, model.focused_section(), -1);
         }
         BareKey::Tab => {
@@ -942,35 +963,30 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
         BareKey::Esc => {
             close_self();
         }
-        BareKey::Char('f') | BareKey::Char('F') => {
-            if model.focused_section() == Section::AgentPanes {
-                *model.filter_active_mut() = true;
-                model.filter_text_mut().clear();
-                *model.selected_pane_mut() = 0;
-                model.clamp_selections();
-            }
+        BareKey::Char('/') => {
+            *model.filter_active_mut() = true;
+            model.filter_text_mut().clear();
+            *model.selected_pane_mut() = 0;
+            model.clamp_selections();
         }
-        BareKey::Char('x') | BareKey::Char('X') => {
+        BareKey::Char('d') => {
             if model.focused_section() == Section::AgentPanes {
                 let idx = model.selected_pane();
                 kill_selected(model, idx);
+            } else if model.focused_section() == Section::Agents
+                && model.selected_agent() < model.agents().len()
+            {
+                start_agent_delete_confirm(model);
             }
         }
-        BareKey::Char('e') | BareKey::Char('E') => {
+        BareKey::Char('e') => {
             if model.focused_section() == Section::Agents
                 && model.selected_agent() < model.agents().len()
             {
                 start_agent_edit(model);
             }
         }
-        BareKey::Char('d') | BareKey::Char('D') => {
-            if model.focused_section() == Section::Agents
-                && model.selected_agent() < model.agents().len()
-            {
-                start_agent_delete_confirm(model);
-            }
-        }
-        BareKey::Char('n') | BareKey::Char('N') => {
+        BareKey::Char('n') => {
             if model.focused_section() == Section::Agents {
                 if model.selected_agent() < model.agents().len() {
                     let agent_name = model.agents()[model.selected_agent()].name.clone();
@@ -981,7 +997,7 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
                 start_new_pane_workspace(model);
             }
         }
-        BareKey::Char('a') | BareKey::Char('A') => {
+        BareKey::Char('a') => {
             if model.focused_section() == Section::Agents {
                 start_agent_create(model);
             } else {

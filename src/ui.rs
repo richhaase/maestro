@@ -490,11 +490,11 @@ fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode() {
         Mode::View => {
             if model.filter_active() {
-                "Filter mode: type to filter • ↑/↓ move • Esc exit filter"
+                "Filter mode: type to filter • Enter select • Esc exit filter"
             } else {
                 match model.focused_section() {
-                    Section::AgentPanes => "↑/↓ move • Tab switch section • f filter • Enter focus • Esc close • x kill • n new • a switch to agents",
-                    Section::Agents => "↑/↓ move • Tab switch section • Enter/e edit • d delete • n launch • a create • Esc close",
+                    Section::AgentPanes => "j/k move • Tab switch • / filter • Enter focus • d kill • n agents • Esc close",
+                    Section::Agents => "j/k move • Tab switch • / filter • Enter launch • e edit • d delete • a create • Esc close",
                 }
             }
         }
