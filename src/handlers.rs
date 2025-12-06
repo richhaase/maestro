@@ -23,32 +23,6 @@ pub enum TabChoice {
     New,
 }
 
-fn selected_tab_choice(model: &mut Model) -> TabChoice {
-    use fuzzy_matcher::skim::SkimMatcherV2;
-    use fuzzy_matcher::FuzzyMatcher;
-
-    let filter_text = model.wizard_tab_filter();
-    let filtered_tabs: Vec<(usize, &String)> = if filter_text.is_empty() {
-        model.tab_names().iter().enumerate().collect()
-    } else {
-        let matcher = SkimMatcherV2::default();
-        model
-            .tab_names()
-            .iter()
-            .enumerate()
-            .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
-            .collect()
-    };
-
-    let idx = model.wizard_tab_idx();
-    if idx < filtered_tabs.len() {
-        let (original_idx, _) = filtered_tabs[idx];
-        TabChoice::Existing(model.tab_names()[original_idx].clone())
-    } else {
-        TabChoice::New
-    }
-}
-
 fn derive_tab_name_from_workspace(input: &str) -> Option<String> {
     let trimmed = input.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -63,31 +37,6 @@ fn derive_tab_name_from_workspace(input: &str) -> Option<String> {
     }
 
     Some(trimmed.to_string())
-}
-
-fn initial_tab_index_for_filter(model: &Model, filter_text: &str) -> usize {
-    use fuzzy_matcher::skim::SkimMatcherV2;
-    use fuzzy_matcher::FuzzyMatcher;
-
-    if filter_text.is_empty() {
-        return 0;
-    }
-
-    let matcher = SkimMatcherV2::default();
-    let filtered: Vec<(usize, &String)> = model
-        .tab_names()
-        .iter()
-        .enumerate()
-        .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
-        .collect();
-
-    for (pos, (_, tab)) in filtered.iter().enumerate() {
-        if tab.eq_ignore_ascii_case(filter_text) {
-            return pos;
-        }
-    }
-
-    filtered.len()
 }
 
 fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
@@ -685,49 +634,6 @@ mod tests {
     }
 
     #[test]
-    fn test_selected_tab_choice_existing() {
-        let mut model = create_test_model();
-        model.tab_names_mut().push("tab1".to_string());
-        model.tab_names_mut().push("tab2".to_string());
-        *model.wizard_tab_idx_mut() = 1;
-        *model.wizard_tab_filter_mut() = String::new();
-        let choice = selected_tab_choice(&mut model);
-        assert_eq!(choice, TabChoice::Existing("tab2".to_string()));
-    }
-
-    #[test]
-    fn test_selected_tab_choice_new() {
-        let mut model = create_test_model();
-        model.tab_names_mut().push("tab1".to_string());
-        *model.wizard_tab_idx_mut() = 1;
-        *model.wizard_tab_filter_mut() = String::new();
-        let choice = selected_tab_choice(&mut model);
-        assert_eq!(choice, TabChoice::New);
-    }
-
-    #[test]
-    fn test_selected_tab_choice_filtered() {
-        let mut model = create_test_model();
-        model.tab_names_mut().push("tab1".to_string());
-        model.tab_names_mut().push("tab2".to_string());
-        model.tab_names_mut().push("other".to_string());
-        *model.wizard_tab_filter_mut() = "tab".to_string();
-        *model.wizard_tab_idx_mut() = 1;
-        let choice = selected_tab_choice(&mut model);
-        assert_eq!(choice, TabChoice::Existing("tab2".to_string()));
-    }
-
-    #[test]
-    fn test_selected_tab_choice_create_from_filter() {
-        let mut model = create_test_model();
-        model.tab_names_mut().push("tab1".to_string());
-        *model.wizard_tab_filter_mut() = "newtab".to_string();
-        *model.wizard_tab_idx_mut() = 0;
-        let choice = selected_tab_choice(&mut model);
-        assert_eq!(choice, TabChoice::New);
-    }
-
-    #[test]
     fn test_derive_tab_name_from_workspace_relative() {
         let derived = derive_tab_name_from_workspace("src/maestro");
         assert_eq!(derived, Some("src/maestro".to_string()));
@@ -737,30 +643,6 @@ mod tests {
     fn test_derive_tab_name_from_workspace_host_prefix() {
         let derived = derive_tab_name_from_workspace("/host/src/maestro");
         assert_eq!(derived, Some("src/maestro".to_string()));
-    }
-
-    #[test]
-    fn test_initial_tab_index_prefers_exact_match() {
-        let mut model = create_test_model();
-        model.tab_names_mut().extend([
-            "alpha".to_string(),
-            "src/maestro".to_string(),
-            "src/other".to_string(),
-        ]);
-        let idx = initial_tab_index_for_filter(&model, "src/maestro");
-        assert_eq!(idx, 0);
-    }
-
-    #[test]
-    fn test_initial_tab_index_defaults_to_new_entry() {
-        let mut model = create_test_model();
-        model.tab_names_mut().extend([
-            "alpha".to_string(),
-            "beta".to_string(),
-        ]);
-        let idx = initial_tab_index_for_filter(&model, "src/maestro");
-        let expected_new_idx = 0; // filtered list empty -> choose new tab
-        assert_eq!(idx, expected_new_idx);
     }
 
     #[test]
@@ -1150,20 +1032,13 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
             if let Some(selected) = suggestions.get(model.browse_selected_idx()) {
                 *model.workspace_input_mut() = selected.clone();
             }
-            let derived_tab_name = derive_tab_name_from_workspace(model.workspace_input());
-            *model.mode_mut() = Mode::NewPaneTabSelect;
+            // Always use workspace path as tab name - skip tab selection step
+            let tab_name = derive_tab_name_from_workspace(model.workspace_input())
+                .unwrap_or_else(|| crate::utils::default_tab_name(model.workspace_input()));
+            *model.custom_tab_name_mut() = Some(tab_name);
+            *model.mode_mut() = Mode::NewPaneAgentSelect;
             *model.wizard_agent_filter_mut() = String::new();
             *model.wizard_agent_idx_mut() = 0;
-            if let Some(tab_name) = derived_tab_name {
-                *model.wizard_tab_filter_mut() = tab_name.clone();
-                *model.custom_tab_name_mut() = Some(tab_name.clone());
-                let idx = initial_tab_index_for_filter(model, &tab_name);
-                *model.wizard_tab_idx_mut() = idx;
-            } else {
-                *model.wizard_tab_filter_mut() = String::new();
-                *model.custom_tab_name_mut() = None;
-                *model.wizard_tab_idx_mut() = 0;
-            }
             reset_status(model);
         }
         BareKey::Esc => cancel_to_view(model),
@@ -1218,7 +1093,13 @@ fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier)
         BareKey::Enter => {
             if let Some(agent_name) = model.quick_launch_agent_name_mut().take() {
                 let workspace = model.workspace_input().trim().to_string();
-                let tab_choice = selected_tab_choice(model);
+                let tab_name = model.custom_tab_name().cloned()
+                    .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
+                let tab_choice = if model.tab_names().contains(&tab_name) {
+                    TabChoice::Existing(tab_name)
+                } else {
+                    TabChoice::New
+                };
                 spawn_agent_pane(model, workspace, agent_name, tab_choice);
                 if model.error_message().is_empty() {
                     view_preserve_messages(model);
@@ -1286,7 +1167,13 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                 let (original_idx, _) = filtered_agents[idx];
                 let agent = model.agents()[original_idx].name.clone();
                 let workspace = model.workspace_input().trim().to_string();
-                let tab_choice = selected_tab_choice(model);
+                let tab_name = model.custom_tab_name().cloned()
+                    .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
+                let tab_choice = if model.tab_names().contains(&tab_name) {
+                    TabChoice::Existing(tab_name)
+                } else {
+                    TabChoice::New
+                };
                 spawn_agent_pane(model, workspace, agent, tab_choice);
                 if model.error_message().is_empty() {
                     view_preserve_messages(model);
@@ -1339,7 +1226,13 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_a
                             format!("Agents saved to {}", saved_path.display());
                         if launch_after {
                             let workspace = model.workspace_input().trim().to_string();
-                            let tab_choice = selected_tab_choice(model);
+                            let tab_name = model.custom_tab_name().cloned()
+                                .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
+                            let tab_choice = if model.tab_names().contains(&tab_name) {
+                                TabChoice::Existing(tab_name)
+                            } else {
+                                TabChoice::New
+                            };
                             spawn_agent_pane(model, workspace, agent.name.clone(), tab_choice);
                         }
                         if model.error_message().is_empty() {
