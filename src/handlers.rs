@@ -378,16 +378,11 @@ pub fn spawn_agent_pane(
     let tab_name = match &tab_choice {
         TabChoice::Existing(name) => name.clone(),
         TabChoice::New => {
-            let filter_text = model.wizard_tab_filter();
-            if !filter_text.trim().is_empty() {
-                filter_text.to_string()
-            } else {
-                model
-                    .custom_tab_name()
-                    .filter(|s| !s.trim().is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path))
-            }
+            model
+                .custom_tab_name()
+                .filter(|s| !s.trim().is_empty())
+                .cloned()
+                .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path))
         }
     };
 
@@ -433,7 +428,6 @@ pub fn spawn_agent_pane(
     });
     model.error_message_mut().clear();
     *model.custom_tab_name_mut() = None;
-    *model.wizard_tab_filter_mut() = String::new();
     *model.wizard_agent_filter_mut() = String::new();
     if model.status_message().is_empty() {
         *model.status_message_mut() = "Agent pane launched".to_string();
@@ -831,7 +825,6 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
         Mode::View => handle_key_event_view(model, key),
         Mode::AgentConfig => handle_key_event_agent_config(model, key),
         Mode::NewPaneWorkspace => handle_key_event_new_pane_workspace(model, key),
-        Mode::NewPaneTabSelect => handle_key_event_new_pane_tab_select(model, key),
         Mode::NewPaneAgentSelect => handle_key_event_new_pane_agent_select(model, key),
         Mode::NewPaneAgentCreate => handle_key_event_agent_form(model, key, true),
         Mode::AgentFormCreate | Mode::AgentFormEdit => {
@@ -950,76 +943,6 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
             reset_status(model);
         }
         BareKey::Esc => cancel_to_view(model),
-        _ => {}
-    }
-}
-
-fn handle_key_event_new_pane_tab_select(model: &mut Model, key: KeyWithModifier) {
-    use fuzzy_matcher::skim::SkimMatcherV2;
-    use fuzzy_matcher::FuzzyMatcher;
-
-    let filter_text = model.wizard_tab_filter();
-    let filtered_tabs: Vec<(usize, &String)> = if filter_text.is_empty() {
-        model.tab_names().iter().enumerate().collect()
-    } else {
-        let matcher = SkimMatcherV2::default();
-        model
-            .tab_names()
-            .iter()
-            .enumerate()
-            .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
-            .collect()
-    };
-
-    let has_exact_match = filtered_tabs
-        .iter()
-        .any(|(_, tab)| tab.eq_ignore_ascii_case(filter_text));
-    let show_new_tab = !filter_text.is_empty() && !has_exact_match;
-    let choices = filtered_tabs.len()
-        + if show_new_tab || filter_text.is_empty() {
-            1
-        } else {
-            0
-        };
-
-    if handle_text_edit(model.wizard_tab_filter_mut(), &key) {
-        *model.wizard_tab_idx_mut() = 0;
-        return;
-    }
-
-    match key.bare_key {
-        BareKey::Up => {
-            if model.wizard_tab_idx() > 0 {
-                *model.wizard_tab_idx_mut() = model.wizard_tab_idx() - 1;
-            }
-        }
-        BareKey::Down => {
-            if model.wizard_tab_idx() + 1 < choices {
-                *model.wizard_tab_idx_mut() = model.wizard_tab_idx() + 1;
-            }
-        }
-        BareKey::Enter => {
-            if let Some(agent_name) = model.quick_launch_agent_name_mut().take() {
-                let workspace = model.workspace_input().trim().to_string();
-                let tab_name = model.custom_tab_name().cloned()
-                    .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
-                let tab_choice = if model.tab_names().contains(&tab_name) {
-                    TabChoice::Existing(tab_name)
-                } else {
-                    TabChoice::New
-                };
-                spawn_agent_pane(model, workspace, agent_name, tab_choice);
-                if model.error_message().is_empty() {
-                    view_preserve_messages(model);
-                }
-            } else {
-                *model.mode_mut() = Mode::NewPaneAgentSelect;
-                *model.wizard_agent_filter_mut() = String::new();
-                *model.wizard_agent_idx_mut() = 0;
-            }
-        }
-        BareKey::Esc => cancel_to_view(model),
-        BareKey::Tab => cancel_to_view(model),
         _ => {}
     }
 }
@@ -1211,7 +1134,6 @@ fn cancel_to_view(model: &mut Model) {
     *model.mode_mut() = Mode::View;
     *model.quick_launch_agent_name_mut() = None;
     *model.custom_tab_name_mut() = None;
-    *model.wizard_tab_filter_mut() = String::new();
     *model.wizard_agent_filter_mut() = String::new();
     reset_status(model);
 }
@@ -1223,12 +1145,10 @@ fn view_preserve_messages(model: &mut Model) {
 fn start_new_pane_workspace(model: &mut Model) {
     model.workspace_input_mut().clear();
     *model.custom_tab_name_mut() = None;
-    *model.wizard_tab_filter_mut() = String::new();
     *model.wizard_agent_filter_mut() = String::new();
     *model.browse_selected_idx_mut() = 0;
     *model.mode_mut() = Mode::NewPaneWorkspace;
     *model.wizard_agent_idx_mut() = 0;
-    *model.wizard_tab_idx_mut() = 0;
     reset_status(model);
 }
 
