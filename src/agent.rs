@@ -26,6 +26,7 @@ pub enum PaneStatus {
 pub struct AgentPane {
     pub pane_title: String,
     pub tab_name: String,
+    pub pending_tab_index: Option<usize>,
     pub pane_id: Option<u32>,
     pub workspace_path: String,
     pub agent_name: String,

@@ -49,6 +49,47 @@ fn selected_tab_choice(model: &mut Model) -> TabChoice {
     }
 }
 
+fn derive_tab_name_from_workspace(input: &str) -> Option<String> {
+    let trimmed = input.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(resolved) = crate::utils::resolve_workspace_path(trimmed) {
+        let normalized = resolved.to_string_lossy().to_string();
+        if !normalized.is_empty() {
+            return Some(normalized);
+        }
+    }
+
+    Some(trimmed.to_string())
+}
+
+fn initial_tab_index_for_filter(model: &Model, filter_text: &str) -> usize {
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    use fuzzy_matcher::FuzzyMatcher;
+
+    if filter_text.is_empty() {
+        return 0;
+    }
+
+    let matcher = SkimMatcherV2::default();
+    let filtered: Vec<(usize, &String)> = model
+        .tab_names()
+        .iter()
+        .enumerate()
+        .filter(|(_, tab)| matcher.fuzzy_match(tab, filter_text).is_some())
+        .collect();
+
+    for (pos, (_, tab)) in filtered.iter().enumerate() {
+        if tab.eq_ignore_ascii_case(filter_text) {
+            return pos;
+        }
+    }
+
+    filtered.len()
+}
+
 fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
     match key.bare_key {
         BareKey::Backspace => {
@@ -92,32 +133,40 @@ pub fn handle_permission_result(model: &mut Model, status: PermissionStatus) {
 pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
     tabs.sort_by_key(|t| t.position);
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
-    let tab_names_ref = &tab_names;
     *model.tab_names_mut() = tab_names.clone();
 
+    // Resolve pending_tab_index to actual tab names
+    // Only update if current tab_name is empty or no longer exists in the tab list
+    for pane in model.agent_panes_mut() {
+        if let Some(idx) = pane.pending_tab_index {
+            if let Some(name) = tab_names.get(idx) {
+                // Only update if we don't have a valid tab name yet
+                if pane.tab_name.is_empty() || !tab_names.contains(&pane.tab_name) {
+                    pane.tab_name = name.clone();
+                }
+            }
+        }
+    }
+
+    // Only retain panes that either have a pane_id or have a valid tab_name or have a pending index
     model
         .agent_panes_mut()
-        .retain(|p| p.pane_id.is_some() || tab_names_ref.contains(&p.tab_name));
+        .retain(|p| p.pane_id.is_some() || tab_names.contains(&p.tab_name) || p.pending_tab_index.is_some());
     model.clamp_selections();
 }
 
 pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
     for (tab_idx, pane_list) in update.panes {
-        let tab_name = model.tab_names().get(tab_idx).cloned().unwrap_or_default();
+        let tab_name_from_idx = model.tab_names().get(tab_idx).cloned().unwrap_or_default();
 
-        let tab_names_ref = model.tab_names().to_vec();
         for pane in pane_list {
             if let Some(existing) = model
                 .agent_panes_mut()
                 .iter_mut()
                 .find(|p| p.pane_id == Some(pane.id))
             {
-                if (existing.tab_name.is_empty()
-                    || (!tab_name.is_empty() && !tab_names_ref.contains(&existing.tab_name)))
-                    && !tab_name.is_empty()
-                {
-                    existing.tab_name = tab_name.clone();
-                }
+                // Update status only - never touch tab_name for existing matched panes
+                // The tab_name was set when the pane was spawned and should be preserved
                 existing.status = if pane.exited {
                     PaneStatus::Exited(pane.exit_status)
                 } else {
@@ -126,6 +175,7 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
                 continue;
             }
 
+            // This is a new pane we haven't seen before (discovered via PaneUpdate)
             let title = pane.title.clone();
             let command_hint = pane.terminal_command.as_deref().unwrap_or(&title);
 
@@ -134,7 +184,8 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
                     let agent_name = agent.name.clone();
                     model.agent_panes_mut().push(AgentPane {
                         pane_title: title,
-                        tab_name: tab_name.clone(),
+                        tab_name: tab_name_from_idx.clone(),
+                        pending_tab_index: if tab_name_from_idx.is_empty() { Some(tab_idx) } else { None },
                         pane_id: Some(pane.id),
                         workspace_path: String::new(),
                         agent_name,
@@ -159,7 +210,9 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
     let workspace_path = ctx.get("cwd").cloned().unwrap_or_default();
     let agent_name = ctx.get("agent").cloned().unwrap_or_default();
 
-    let first_tab = model.tab_names().first().cloned();
+    let tab_names_snapshot = model.tab_names().to_vec();
+    let first_tab = tab_names_snapshot.first().cloned();
+    let ctx_tab_name = ctx.get("tab_name").cloned();
     let entry = model
         .agent_panes_mut()
         .iter_mut()
@@ -170,10 +223,12 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
         existing.pane_title = title.clone();
 
         if existing.tab_name.is_empty() {
-            if let Some(tab_name) = ctx.get("tab_name").cloned() {
+            if let Some(tab_name) = ctx_tab_name.clone() {
                 existing.tab_name = tab_name;
+                existing.pending_tab_index = None;
             } else if let Some(first_tab) = first_tab {
                 existing.tab_name = first_tab;
+                existing.pending_tab_index = None;
             }
         }
         if !workspace_path.is_empty() {
@@ -184,14 +239,14 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
         }
         existing.status = PaneStatus::Running;
     } else {
-        let tab_name = ctx
-            .get("tab_name")
-            .cloned()
-            .or_else(|| model.tab_names().first().cloned())
+        let tab_name = ctx_tab_name
+            .clone()
+            .or_else(|| tab_names_snapshot.first().cloned())
             .unwrap_or_default();
         model.agent_panes_mut().push(AgentPane {
             pane_title: title,
             tab_name,
+            pending_tab_index: None,
             pane_id: Some(pane_id),
             workspace_path,
             agent_name,
@@ -202,8 +257,6 @@ pub fn handle_command_pane_opened(model: &mut Model, pane_id: u32, ctx: BTreeMap
 }
 
 fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) {
-    let has_tab_names = !model.tab_names().is_empty();
-
     for session in session_infos {
         let session_name = session.name.clone();
         if let Some(current) = model.session_name() {
@@ -213,44 +266,40 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
         } else {
             *model.session_name_mut() = Some(session_name.clone());
         }
-        for (tab_idx, pane_list) in session.panes.clone().panes {
-            let tab_name = if has_tab_names {
-                model.tab_names().get(tab_idx).cloned().unwrap_or_default()
-            } else {
-                String::new()
-            };
 
-            let mut unmatched_in_tab: Vec<usize> = if has_tab_names {
+        // Build tab lookup from session info
+        let mut tab_lookup = BTreeMap::new();
+        for tab in &session.tabs {
+            tab_lookup.insert(tab.position, tab.name.clone());
+        }
+
+        for (tab_idx, pane_list) in session.panes.clone().panes {
+            let tab_name_from_idx = tab_lookup.get(&tab_idx).cloned().unwrap_or_default();
+
+            let mut unmatched_in_tab: Vec<usize> = if !tab_name_from_idx.is_empty() {
                 model
                     .agent_panes()
                     .iter()
                     .enumerate()
-                    .filter(|(_, p)| p.pane_id.is_none() && p.tab_name == tab_name)
+                    .filter(|(_, p)| p.pane_id.is_none() && p.tab_name == tab_name_from_idx)
                     .map(|(idx, _)| idx)
                     .collect()
             } else {
                 Vec::new()
             };
 
-            let tab_names_ref = model.tab_names().to_vec();
             for pane in pane_list {
                 if let Some(existing) = model
                     .agent_panes_mut()
                     .iter_mut()
                     .find(|p| p.pane_id == Some(pane.id))
                 {
+                    // Update status only - preserve tab_name
                     existing.status = if pane.exited {
                         PaneStatus::Exited(pane.exit_status)
                     } else {
                         PaneStatus::Running
                     };
-
-                    if (existing.tab_name.is_empty()
-                        || (!tab_name.is_empty() && !tab_names_ref.contains(&existing.tab_name)))
-                        && !tab_name.is_empty()
-                    {
-                        existing.tab_name = tab_name.clone();
-                    }
                     continue;
                 }
 
@@ -262,19 +311,19 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                     } else {
                         PaneStatus::Running
                     };
-                    if !tab_name.is_empty() {
-                        existing.tab_name = tab_name.clone();
-                    }
+                    // tab_name already set, don't overwrite
                     continue;
                 }
 
+                // New pane discovered via session info
                 if !pane.is_plugin {
                     let command_hint = pane.terminal_command.as_deref().unwrap_or(&pane.title);
                     if let Some(agent) = find_agent_by_command(model.agents(), command_hint) {
                         let agent_name = agent.name.clone();
                         model.agent_panes_mut().push(AgentPane {
                             pane_title: pane.title.clone(),
-                            tab_name: tab_name.clone(),
+                            tab_name: tab_name_from_idx.clone(),
+                            pending_tab_index: if tab_name_from_idx.is_empty() { Some(tab_idx) } else { None },
                             pane_id: Some(pane.id),
                             workspace_path: String::new(),
                             agent_name,
@@ -416,6 +465,7 @@ pub fn spawn_agent_pane(
         ctx.insert("cwd".to_string(), resolved.to_string_lossy().to_string());
     }
     ctx.insert("agent".to_string(), agent.name.clone());
+    ctx.insert("tab_name".to_string(), tab_target.clone());
 
     let mut command_to_run = CommandToRun::new(cmd.join(" "));
     if let Some(ref resolved) = resolved_workspace {
@@ -426,6 +476,7 @@ pub fn spawn_agent_pane(
     model.agent_panes_mut().push(AgentPane {
         pane_title: title.clone(),
         tab_name: tab_target,
+        pending_tab_index: None,
         pane_id: None,
         workspace_path,
         agent_name,
@@ -677,11 +728,70 @@ mod tests {
     }
 
     #[test]
+    fn test_derive_tab_name_from_workspace_relative() {
+        let derived = derive_tab_name_from_workspace("src/maestro");
+        assert_eq!(derived, Some("src/maestro".to_string()));
+    }
+
+    #[test]
+    fn test_derive_tab_name_from_workspace_host_prefix() {
+        let derived = derive_tab_name_from_workspace("/host/src/maestro");
+        assert_eq!(derived, Some("src/maestro".to_string()));
+    }
+
+    #[test]
+    fn test_initial_tab_index_prefers_exact_match() {
+        let mut model = create_test_model();
+        model.tab_names_mut().extend([
+            "alpha".to_string(),
+            "src/maestro".to_string(),
+            "src/other".to_string(),
+        ]);
+        let idx = initial_tab_index_for_filter(&model, "src/maestro");
+        assert_eq!(idx, 0);
+    }
+
+    #[test]
+    fn test_initial_tab_index_defaults_to_new_entry() {
+        let mut model = create_test_model();
+        model.tab_names_mut().extend([
+            "alpha".to_string(),
+            "beta".to_string(),
+        ]);
+        let idx = initial_tab_index_for_filter(&model, "src/maestro");
+        let expected_new_idx = 0; // filtered list empty -> choose new tab
+        assert_eq!(idx, expected_new_idx);
+    }
+
+    #[test]
     fn test_handle_text_edit_char() {
         let mut target = String::new();
         let key = char_key('a');
         assert!(handle_text_edit(&mut target, &key));
         assert_eq!(target, "a");
+    }
+
+    #[test]
+    fn test_handle_command_pane_opened_uses_ctx_tab_name() {
+        let mut model = create_test_model();
+        model.tab_names_mut().extend([
+            "Tab #1".to_string(),
+            "src/plonk".to_string(),
+        ]);
+        model.agent_panes_mut().push(AgentPane {
+            pane_title: "pane:1".to_string(),
+            tab_name: String::new(),
+            pending_tab_index: None,
+            pane_id: None,
+            workspace_path: String::new(),
+            agent_name: String::new(),
+            status: PaneStatus::Running,
+        });
+        let mut ctx = BTreeMap::new();
+        ctx.insert("pane_title".to_string(), "pane:1".to_string());
+        ctx.insert("tab_name".to_string(), "src/plonk".to_string());
+        handle_command_pane_opened(&mut model, 1, ctx);
+        assert_eq!(model.agent_panes()[0].tab_name, "src/plonk");
     }
 
     #[test]
@@ -1040,11 +1150,20 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
             if let Some(selected) = suggestions.get(model.browse_selected_idx()) {
                 *model.workspace_input_mut() = selected.clone();
             }
+            let derived_tab_name = derive_tab_name_from_workspace(model.workspace_input());
             *model.mode_mut() = Mode::NewPaneTabSelect;
-            *model.wizard_tab_filter_mut() = String::new();
             *model.wizard_agent_filter_mut() = String::new();
-            *model.wizard_tab_idx_mut() = 0;
             *model.wizard_agent_idx_mut() = 0;
+            if let Some(tab_name) = derived_tab_name {
+                *model.wizard_tab_filter_mut() = tab_name.clone();
+                *model.custom_tab_name_mut() = Some(tab_name.clone());
+                let idx = initial_tab_index_for_filter(model, &tab_name);
+                *model.wizard_tab_idx_mut() = idx;
+            } else {
+                *model.wizard_tab_filter_mut() = String::new();
+                *model.custom_tab_name_mut() = None;
+                *model.wizard_tab_idx_mut() = 0;
+            }
             reset_status(model);
         }
         BareKey::Esc => cancel_to_view(model),

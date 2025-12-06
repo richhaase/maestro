@@ -319,6 +319,7 @@ mod tests {
         AgentPane {
             pane_title: format!("{}", agent_name),
             tab_name: tab_name.to_string(),
+            pending_tab_index: None,
             pane_id: Some(1),
             workspace_path: String::new(),
             agent_name: agent_name.to_string(),
