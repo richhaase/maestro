@@ -171,7 +171,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
             let mut lines = Vec::new();
             let input = model.workspace_input();
             let display_input = input.strip_prefix("/host/").unwrap_or(input);
-            lines.push("New Agent Pane: workspace path (optional)".to_string());
+            lines.push("New Agent Pane: workspace path".to_string());
             lines.push(format!(
                 "> {}_",
                 truncate(display_input, cols.saturating_sub(2))
