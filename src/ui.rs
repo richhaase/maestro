@@ -1,39 +1,16 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use zellij_tile::ui_components::{serialize_ribbon_line, serialize_table, Table, Text};
+use zellij_tile::ui_components::{serialize_table, Table, Text};
 
-use crate::agent::Agent;
-use crate::agent::{AgentPane, PaneStatus};
+use crate::agent::{Agent, PaneStatus};
 use crate::model::Model;
 use crate::utils::truncate;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Section {
-    #[default]
-    AgentPanes,
-    Agents,
-}
-
-impl Section {
-    pub fn next(self) -> Self {
-        match self {
-            Section::AgentPanes => Section::Agents,
-            Section::Agents => Section::AgentPanes,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Section::AgentPanes => "Maestro",
-            Section::Agents => "Agent Config",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
     View,
+    AgentConfig,
     NewPaneWorkspace,
     NewPaneTabSelect,
     NewPaneAgentSelect,
@@ -86,22 +63,7 @@ pub fn render_permissions_requesting(rows: usize, cols: usize) -> String {
 pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
 
-    out.push_str(&render_section_tabs(model, cols));
-    out.push('\n');
-
-    if model.filter_active() && model.focused_section() == Section::AgentPanes {
-        out.push_str(&render_filter(model, cols));
-        out.push('\n');
-    }
-
-    match model.focused_section() {
-        Section::AgentPanes => {
-            out.push_str(&render_agent_panes(model, cols));
-        }
-        Section::Agents => {
-            out.push_str(&render_agent_management(model, cols));
-        }
-    }
+    out.push_str(&render_agent_panes(model, cols));
 
     if let Some(overlay) = render_overlay(model, cols) {
         out.push('\n');
@@ -112,55 +74,10 @@ pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     out
 }
 
-fn render_section_tabs(model: &Model, _cols: usize) -> String {
-    let mut ribbon_items = Vec::new();
-    for section in [Section::AgentPanes, Section::Agents] {
-        let label = section.label();
-        let is_active = model.focused_section() == section;
-        let text = if is_active {
-            Text::new(label).selected()
-        } else {
-            Text::new(label)
-        };
-        ribbon_items.push(text);
-    }
-    serialize_ribbon_line(ribbon_items)
-}
-
-fn render_filter(model: &Model, _cols: usize) -> String {
-    let filter_prompt = if model.filter_text().is_empty() {
-        "Filter: (type to filter by agent name or tab)"
-    } else {
-        "Filter:"
-    };
-    format!("{} {}", filter_prompt, model.filter_text())
-}
-
 fn render_agent_panes(model: &Model, cols: usize) -> String {
-    let panes: Vec<&AgentPane> = if model.filter_text().is_empty() {
-        model.agent_panes().iter().collect()
-    } else {
-        let matcher = SkimMatcherV2::default();
-        let filter_text = model.filter_text();
-
-        model
-            .agent_panes()
-            .iter()
-            .filter(|p| {
-                let status_text = match p.status {
-                    PaneStatus::Running => "RUNNING",
-                    PaneStatus::Exited(_) => "EXITED",
-                };
-                let searchable = format!("{} {} {}", p.agent_name, p.tab_name, status_text);
-
-                matcher.fuzzy_match(&searchable, filter_text).is_some()
-            })
-            .collect()
-    };
-
     let mut table = Table::new().add_row(vec!["Tab", "Agent", "Status"]);
 
-    for (idx, pane) in panes.iter().enumerate() {
+    for (idx, pane) in model.agent_panes().iter().enumerate() {
         let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
         let agent = if pane.agent_name.is_empty() {
             "(agent)"
@@ -189,7 +106,7 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
 
         table = table.add_styled_row(row);
     }
-    if panes.is_empty() {
+    if model.agent_panes().is_empty() {
         table = table.add_row(vec![
             "(no agent panes)".to_string(),
             "".to_string(),
@@ -242,6 +159,14 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
     match model.mode() {
         Mode::View => None,
+        Mode::AgentConfig => {
+            let lines = vec![
+                "Agent Configuration".to_string(),
+                "".to_string(),
+                render_agent_management(model, cols),
+            ];
+            Some(lines.join("\n"))
+        }
         Mode::NewPaneWorkspace => {
             let mut lines = Vec::new();
             let input = model.workspace_input();
@@ -488,16 +413,8 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
 
 fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode() {
-        Mode::View => {
-            if model.filter_active() {
-                "Filter mode: type to filter • Enter select • Esc exit filter"
-            } else {
-                match model.focused_section() {
-                    Section::AgentPanes => "j/k move • Tab switch • / filter • Enter focus • d kill • n agents • Esc close",
-                    Section::Agents => "j/k move • Tab switch • / filter • Enter launch • e edit • d delete • a create • Esc close",
-                }
-            }
-        }
+        Mode::View => "j/k move • Enter focus • d kill • n new • c config • Esc close",
+        Mode::AgentConfig => "j/k move • a add • e edit • d delete • Esc back",
         Mode::NewPaneWorkspace => "[Enter] continue • Esc cancel • type to edit path",
         Mode::NewPaneTabSelect => {
             "[↑/↓] choose tab • type to edit new tab name • Enter confirm • Esc cancel"
@@ -520,18 +437,6 @@ fn render_status(model: &Model, cols: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_section_next() {
-        assert_eq!(Section::AgentPanes.next(), Section::Agents);
-        assert_eq!(Section::Agents.next(), Section::AgentPanes);
-    }
-
-    #[test]
-    fn test_section_label() {
-        assert_eq!(Section::AgentPanes.label(), "Maestro");
-        assert_eq!(Section::Agents.label(), "Agent Config");
-    }
 
     #[test]
     fn test_next_field() {

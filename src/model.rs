@@ -1,5 +1,5 @@
 use crate::agent::{Agent, AgentPane};
-use crate::ui::{AgentFormField, Mode, Section};
+use crate::ui::{AgentFormField, Mode};
 
 #[derive(Debug, Default)]
 struct FormState {
@@ -16,7 +16,6 @@ struct FormState {
 struct SelectionState {
     selected_pane: usize,
     selected_agent: usize,
-    focused_section: Section,
     wizard_tab_idx: usize,
     wizard_agent_idx: usize,
     wizard_tab_filter: String,
@@ -37,8 +36,6 @@ pub struct Model {
     quick_launch_agent_name: Option<String>,
     workspace_input: String,
     custom_tab_name: Option<String>,
-    filter_text: String,
-    filter_active: bool,
     session_name: Option<String>,
     form: FormState,
     selection: SelectionState,
@@ -83,18 +80,6 @@ impl Model {
 
     pub fn selected_agent(&self) -> usize {
         self.selection.selected_agent
-    }
-
-    pub fn focused_section(&self) -> Section {
-        self.selection.focused_section
-    }
-
-    pub fn filter_text(&self) -> &str {
-        &self.filter_text
-    }
-
-    pub fn filter_active(&self) -> bool {
-        self.filter_active
     }
 
     pub fn mode(&self) -> Mode {
@@ -193,18 +178,6 @@ impl Model {
         &mut self.selection.selected_agent
     }
 
-    pub fn focused_section_mut(&mut self) -> &mut Section {
-        &mut self.selection.focused_section
-    }
-
-    pub fn filter_text_mut(&mut self) -> &mut String {
-        &mut self.filter_text
-    }
-
-    pub fn filter_active_mut(&mut self) -> &mut bool {
-        &mut self.filter_active
-    }
-
     pub fn mode_mut(&mut self) -> &mut Mode {
         &mut self.mode
     }
@@ -274,18 +247,7 @@ impl Model {
     }
 
     pub fn clamp_selections(&mut self) {
-        let filter_lower = self.filter_text.to_lowercase();
-        let pane_len = if filter_lower.is_empty() {
-            self.agent_panes.len()
-        } else {
-            self.agent_panes
-                .iter()
-                .filter(|p| {
-                    p.agent_name.to_lowercase().contains(&filter_lower)
-                        || p.tab_name.to_lowercase().contains(&filter_lower)
-                })
-                .count()
-        };
+        let pane_len = self.agent_panes.len();
         if pane_len == 0 {
             self.selection.selected_pane = 0;
         } else if self.selection.selected_pane >= pane_len {
@@ -350,39 +312,6 @@ mod tests {
         model.clamp_selections();
         assert_eq!(model.selected_pane(), 0);
         assert_eq!(model.selected_agent(), 1);
-    }
-
-    #[test]
-    fn test_clamp_selections_with_filter() {
-        let mut model = Model::default();
-        model
-            .agent_panes_mut()
-            .push(create_test_pane("agent1", "tab1"));
-        model
-            .agent_panes_mut()
-            .push(create_test_pane("agent2", "tab2"));
-        model
-            .agent_panes_mut()
-            .push(create_test_pane("other", "tab3"));
-        *model.filter_text_mut() = "agent".to_string();
-        model.selection.selected_pane = 5;
-        model.clamp_selections();
-        assert_eq!(model.selected_pane(), 1);
-    }
-
-    #[test]
-    fn test_clamp_selections_filter_matches_tab_name() {
-        let mut model = Model::default();
-        model
-            .agent_panes_mut()
-            .push(create_test_pane("other", "agent-tab"));
-        model
-            .agent_panes_mut()
-            .push(create_test_pane("other", "other-tab"));
-        *model.filter_text_mut() = "agent".to_string();
-        model.selection.selected_pane = 0;
-        model.clamp_selections();
-        assert_eq!(model.selected_pane(), 0);
     }
 
     #[test]

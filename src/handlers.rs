@@ -12,7 +12,7 @@ use crate::agent::{default_config_path, is_default_agent, save_agents};
 use crate::agent::{Agent, AgentPane, PaneStatus};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
-use crate::ui::{next_field, prev_field, AgentFormField, Mode, Section};
+use crate::ui::{next_field, prev_field, AgentFormField, Mode};
 use crate::utils::{
     build_command_with_env, find_agent_by_command, parse_env_input, workspace_basename,
 };
@@ -448,25 +448,11 @@ pub fn focus_selected(model: &mut Model, selected_idx: usize) {
         return;
     }
 
-    let filter_lower = model.filter_text().to_lowercase();
-    let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
-        model.agent_panes().iter().collect()
-    } else {
-        model
-            .agent_panes()
-            .iter()
-            .filter(|p| {
-                p.agent_name.to_lowercase().contains(&filter_lower)
-                    || p.tab_name.to_lowercase().contains(&filter_lower)
-            })
-            .collect()
-    };
-
-    if selected_idx >= panes.len() {
+    if selected_idx >= model.agent_panes().len() {
         *model.error_message_mut() = "no agent panes".to_string();
         return;
     }
-    let pane = panes[selected_idx];
+    let pane = &model.agent_panes()[selected_idx];
     go_to_tab_name(&pane.tab_name);
     if let Some(pid) = pane.pane_id {
         focus_terminal_pane(pid, false);
@@ -483,25 +469,11 @@ pub fn kill_selected(model: &mut Model, selected_idx: usize) {
         return;
     }
 
-    let filter_lower = model.filter_text().to_lowercase();
-    let panes: Vec<&AgentPane> = if filter_lower.is_empty() {
-        model.agent_panes().iter().collect()
-    } else {
-        model
-            .agent_panes()
-            .iter()
-            .filter(|p| {
-                p.agent_name.to_lowercase().contains(&filter_lower)
-                    || p.tab_name.to_lowercase().contains(&filter_lower)
-            })
-            .collect()
-    };
-
-    if selected_idx >= panes.len() {
+    if selected_idx >= model.agent_panes().len() {
         *model.error_message_mut() = "no agent panes".to_string();
         return;
     }
-    let pane = panes[selected_idx];
+    let pane = &model.agent_panes()[selected_idx];
     if let Some(pid) = pane.pane_id {
         close_terminal_pane(pid);
         model.agent_panes_mut().retain(|p| p.pane_id != Some(pid));
@@ -857,6 +829,7 @@ mod tests {
 pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
     match model.mode() {
         Mode::View => handle_key_event_view(model, key),
+        Mode::AgentConfig => handle_key_event_agent_config(model, key),
         Mode::NewPaneWorkspace => handle_key_event_new_pane_workspace(model, key),
         Mode::NewPaneTabSelect => handle_key_event_new_pane_tab_select(model, key),
         Mode::NewPaneAgentSelect => handle_key_event_new_pane_agent_select(model, key),
@@ -869,133 +842,68 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
 }
 
 fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
-    if !key.key_modifiers.is_empty() && key.bare_key != BareKey::Tab {
+    if !key.key_modifiers.is_empty() {
         return;
     }
 
-    if model.filter_active() {
-        match key.bare_key {
-            BareKey::Char(c) => {
-                *model.filter_text_mut() = format!("{}{}", model.filter_text(), c);
-                *model.selected_pane_mut() = 0;
-                model.clamp_selections();
-                return;
-            }
-            BareKey::Up => {
-                move_selection(model, model.focused_section(), -1);
-                return;
-            }
-            BareKey::Down => {
-                move_selection(model, model.focused_section(), 1);
-                return;
-            }
-            BareKey::Backspace => {
-                let mut filter = model.filter_text().to_string();
-                filter.pop();
-                *model.filter_text_mut() = filter;
-                *model.selected_pane_mut() = 0;
-                model.clamp_selections();
-                return;
-            }
-            BareKey::Esc => {
-                *model.filter_active_mut() = false;
-                model.filter_text_mut().clear();
-                *model.selected_pane_mut() = 0;
-                model.clamp_selections();
-                return;
-            }
-            BareKey::Enter => {
-                // Allow launching from filter mode
-                match model.focused_section() {
-                    Section::AgentPanes => {
-                        let idx = model.selected_pane();
-                        focus_selected(model, idx);
-                        close_self();
-                    }
-                    Section::Agents => {
-                        if model.selected_agent() < model.agents().len() {
-                            let agent_name = model.agents()[model.selected_agent()].name.clone();
-                            *model.quick_launch_agent_name_mut() = Some(agent_name);
-                            start_new_pane_workspace(model);
-                        }
-                    }
-                }
-                return;
-            }
-            _ => {}
-        }
-        return;
-    }
-
-    // Normal Mode
     match key.bare_key {
         BareKey::Char('j') | BareKey::Down => {
-            move_selection(model, model.focused_section(), 1);
+            move_pane_selection(model, 1);
         }
         BareKey::Char('k') | BareKey::Up => {
-            move_selection(model, model.focused_section(), -1);
+            move_pane_selection(model, -1);
         }
-        BareKey::Tab => {
-            focus_next_section(model);
+        BareKey::Enter => {
+            let idx = model.selected_pane();
+            focus_selected(model, idx);
+            close_self();
         }
-        BareKey::Enter => match model.focused_section() {
-            Section::AgentPanes => {
-                let idx = model.selected_pane();
-                focus_selected(model, idx);
-                close_self();
-            }
-            Section::Agents => {
-                if model.selected_agent() < model.agents().len() {
-                    let agent_name = model.agents()[model.selected_agent()].name.clone();
-                    *model.quick_launch_agent_name_mut() = Some(agent_name);
-                    start_new_pane_workspace(model);
-                }
-            }
-        },
         BareKey::Esc => {
             close_self();
         }
-        BareKey::Char('/') => {
-            *model.filter_active_mut() = true;
-            model.filter_text_mut().clear();
-            *model.selected_pane_mut() = 0;
-            model.clamp_selections();
-        }
         BareKey::Char('d') => {
-            if model.focused_section() == Section::AgentPanes {
-                let idx = model.selected_pane();
-                kill_selected(model, idx);
-            } else if model.focused_section() == Section::Agents
-                && model.selected_agent() < model.agents().len()
-            {
-                start_agent_delete_confirm(model);
-            }
+            let idx = model.selected_pane();
+            kill_selected(model, idx);
+        }
+        BareKey::Char('n') => {
+            start_new_pane_workspace(model);
+        }
+        BareKey::Char('c') => {
+            *model.mode_mut() = Mode::AgentConfig;
+            reset_status(model);
+        }
+        _ => {}
+    }
+}
+
+fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
+    if !key.key_modifiers.is_empty() {
+        return;
+    }
+
+    match key.bare_key {
+        BareKey::Char('j') | BareKey::Down => {
+            move_agent_selection(model, 1);
+        }
+        BareKey::Char('k') | BareKey::Up => {
+            move_agent_selection(model, -1);
+        }
+        BareKey::Char('a') => {
+            start_agent_create(model);
         }
         BareKey::Char('e') => {
-            if model.focused_section() == Section::Agents
-                && model.selected_agent() < model.agents().len()
-            {
+            if model.selected_agent() < model.agents().len() {
                 start_agent_edit(model);
             }
         }
-        BareKey::Char('n') => {
-            if model.focused_section() == Section::Agents {
-                if model.selected_agent() < model.agents().len() {
-                    let agent_name = model.agents()[model.selected_agent()].name.clone();
-                    *model.quick_launch_agent_name_mut() = Some(agent_name);
-                    start_new_pane_workspace(model);
-                }
-            } else {
-                start_new_pane_workspace(model);
+        BareKey::Char('d') => {
+            if model.selected_agent() < model.agents().len() {
+                start_agent_delete_confirm(model);
             }
         }
-        BareKey::Char('a') => {
-            if model.focused_section() == Section::Agents {
-                start_agent_create(model);
-            } else {
-                *model.focused_section_mut() = Section::Agents;
-                model.clamp_selections();
-            }
+        BareKey::Esc => {
+            *model.mode_mut() = Mode::View;
+            reset_status(model);
         }
         _ => {}
     }
@@ -1383,48 +1291,26 @@ fn start_agent_delete_confirm(model: &mut Model) {
     reset_status(model);
 }
 
-fn move_selection(model: &mut Model, section: Section, delta: isize) {
-    let (len, current) = match section {
-        Section::AgentPanes => {
-            let filter_lower = model.filter_text().to_lowercase();
-            let panes_len = if filter_lower.is_empty() {
-                model.agent_panes().len()
-            } else {
-                model
-                    .agent_panes()
-                    .iter()
-                    .filter(|p| {
-                        p.agent_name.to_lowercase().contains(&filter_lower)
-                            || p.tab_name.to_lowercase().contains(&filter_lower)
-                    })
-                    .count()
-            };
-            (panes_len, model.selected_pane())
-        }
-        Section::Agents => (model.agents().len(), model.selected_agent()),
-    };
+fn move_pane_selection(model: &mut Model, delta: isize) {
+    let len = model.agent_panes().len();
     if len == 0 {
         return;
     }
-    let mut next = current as isize + delta;
-    if next < 0 {
-        next = 0;
-    }
-    if next >= len as isize {
-        next = len as isize - 1;
-    }
-    let next = next as usize;
-    match section {
-        Section::AgentPanes => *model.selected_pane_mut() = next,
-        Section::Agents => *model.selected_agent_mut() = next,
-    }
+    let current = model.selected_pane() as isize;
+    let next = (current + delta).clamp(0, len as isize - 1) as usize;
+    *model.selected_pane_mut() = next;
     model.status_message_mut().clear();
     model.error_message_mut().clear();
 }
 
-fn focus_next_section(model: &mut Model) {
-    *model.focused_section_mut() = model.focused_section().next();
+fn move_agent_selection(model: &mut Model, delta: isize) {
+    let len = model.agents().len();
+    if len == 0 {
+        return;
+    }
+    let current = model.selected_agent() as isize;
+    let next = (current + delta).clamp(0, len as isize - 1) as usize;
+    *model.selected_agent_mut() = next;
     model.status_message_mut().clear();
     model.error_message_mut().clear();
-    model.clamp_selections();
 }

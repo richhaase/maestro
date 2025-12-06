@@ -8,4 +8,4 @@ pub mod utils;
 pub use agent::{Agent, AgentPane, PaneStatus};
 pub use error::{MaestroError, MaestroResult};
 pub use model::Model;
-pub use ui::{AgentFormField, Mode, Section};
+pub use ui::{AgentFormField, Mode};
