@@ -3,6 +3,8 @@ All notable changes are tracked here following [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-12-07
+
 ### Features
 - Added typedown autocomplete while entering workspace paths. (`ebe4293`)
 - Added fuzzy "filter or create" interface to the agent selection step, plus a matching tab filter/creation flow. (`0e729e3`, `a363547`)
