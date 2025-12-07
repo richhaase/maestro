@@ -1,8 +1,6 @@
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 use zellij_tile::ui_components::{serialize_table, Table, Text};
 
-use crate::agent::{Agent, PaneStatus};
+use crate::agent::PaneStatus;
 use crate::model::Model;
 use crate::utils::truncate;
 
@@ -13,7 +11,6 @@ pub enum Mode {
     AgentConfig,
     NewPaneWorkspace,
     NewPaneAgentSelect,
-    NewPaneAgentCreate,
     AgentFormCreate,
     AgentFormEdit,
     DeleteConfirm,
@@ -216,30 +213,10 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         }
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
-            let filter_text = model.wizard_agent_filter();
+            lines.push("New Agent Pane: select agent".to_string());
 
-            let filtered_agents: Vec<(usize, &Agent)> = if filter_text.is_empty() {
-                model.agents().iter().enumerate().collect()
-            } else {
-                let matcher = SkimMatcherV2::default();
-                model
-                    .agents()
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, agent)| matcher.fuzzy_match(&agent.name, filter_text).is_some())
-                    .collect()
-            };
-
-            lines.push("New Agent Pane: select agent or type to create".to_string());
-            if !filter_text.is_empty() {
-                lines.push(format!(
-                    "Filter: {}_",
-                    truncate(filter_text, cols.saturating_sub(8))
-                ));
-            }
-
-            for (display_idx, (_, agent)) in filtered_agents.iter().enumerate() {
-                let prefix = if display_idx == model.wizard_agent_idx() {
+            for (idx, agent) in model.agents().iter().enumerate() {
+                let prefix = if idx == model.wizard_agent_idx() {
                     ">"
                 } else {
                     " "
@@ -251,39 +228,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 ));
             }
 
-            let has_exact_match = filtered_agents
-                .iter()
-                .any(|(_, agent)| agent.name.eq_ignore_ascii_case(filter_text));
-            let show_new_agent = !filter_text.is_empty() && !has_exact_match;
-            let new_agent_idx = filtered_agents.len();
-
-            if show_new_agent
-                || (filter_text.is_empty() && model.wizard_agent_idx() == new_agent_idx)
-            {
-                let is_selected = model.wizard_agent_idx() == new_agent_idx;
-                let prefix = if is_selected { ">" } else { " " };
-                let agent_name = if filter_text.is_empty() {
-                    "(create new agent)".to_string()
-                } else {
-                    format!(
-                        "(create new agent: {})",
-                        truncate(filter_text, cols.saturating_sub(25))
-                    )
-                };
-                lines.push(format!("{prefix} {agent_name}"));
-            } else if filter_text.is_empty() {
-                let is_selected = model.wizard_agent_idx() == new_agent_idx;
-                let prefix = if is_selected { ">" } else { " " };
-                lines.push(format!("{prefix} (create new agent)"));
-            }
-
             Some(lines.join("\n"))
         }
-        Mode::NewPaneAgentCreate => Some(render_agent_form_overlay(
-            model,
-            "New Agent Pane: create agent then launch",
-            cols,
-        )),
         Mode::AgentFormCreate => Some(render_agent_form_overlay(
             model,
             "Add agent (not yet persisted)",
@@ -349,8 +295,7 @@ fn render_status(model: &Model, cols: usize) -> String {
         Mode::View => "j/k move • Enter focus • d kill • n new • c config • Esc close",
         Mode::AgentConfig => "j/k move • a add • e edit • d delete • Esc back",
         Mode::NewPaneWorkspace => "[↑/↓] select • Enter continue • Esc cancel",
-        Mode::NewPaneAgentSelect => "[↑/↓] choose • Enter select/create • Esc cancel",
-        Mode::NewPaneAgentCreate => "[Tab] next field • Enter save+launch • Esc cancel",
+        Mode::NewPaneAgentSelect => "j/k move • Enter select • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };

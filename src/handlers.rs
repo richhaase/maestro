@@ -564,9 +564,8 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
         Mode::AgentConfig => handle_key_event_agent_config(model, key),
         Mode::NewPaneWorkspace => handle_key_event_new_pane_workspace(model, key),
         Mode::NewPaneAgentSelect => handle_key_event_new_pane_agent_select(model, key),
-        Mode::NewPaneAgentCreate => handle_key_event_agent_form(model, key, true),
         Mode::AgentFormCreate | Mode::AgentFormEdit => {
-            handle_key_event_agent_form(model, key, false)
+            handle_key_event_agent_form(model, key)
         }
         Mode::DeleteConfirm => handle_key_event_delete_confirm(model, key),
     }
@@ -686,57 +685,31 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
 }
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
-    use fuzzy_matcher::skim::SkimMatcherV2;
-    use fuzzy_matcher::FuzzyMatcher;
-
-    if handle_text_edit(model.wizard_agent_filter_mut(), &key) {
-        *model.wizard_agent_idx_mut() = 0;
+    if !key.key_modifiers.is_empty() {
         return;
     }
 
-    let filter_text = model.wizard_agent_filter();
-    let filtered_agents: Vec<(usize, &Agent)> = if filter_text.is_empty() {
-        model.agents().iter().enumerate().collect()
-    } else {
-        let matcher = SkimMatcherV2::default();
-        model
-            .agents()
-            .iter()
-            .enumerate()
-            .filter(|(_, agent)| matcher.fuzzy_match(&agent.name, filter_text).is_some())
-            .collect()
-    };
-
-    let has_exact_match = filtered_agents
-        .iter()
-        .any(|(_, agent)| agent.name.eq_ignore_ascii_case(filter_text));
-    let show_new_agent = !filter_text.is_empty() && !has_exact_match;
-    let choices = filtered_agents.len()
-        + if show_new_agent || filter_text.is_empty() {
-            1
-        } else {
-            0
-        };
+    let agent_count = model.agents().len();
 
     match key.bare_key {
-        BareKey::Up => {
+        BareKey::Char('j') | BareKey::Down => {
+            if agent_count > 0 && model.wizard_agent_idx() + 1 < agent_count {
+                *model.wizard_agent_idx_mut() = model.wizard_agent_idx() + 1;
+            }
+        }
+        BareKey::Char('k') | BareKey::Up => {
             if model.wizard_agent_idx() > 0 {
                 *model.wizard_agent_idx_mut() = model.wizard_agent_idx() - 1;
             }
         }
-        BareKey::Down => {
-            if model.wizard_agent_idx() + 1 < choices {
-                *model.wizard_agent_idx_mut() = model.wizard_agent_idx() + 1;
-            }
-        }
         BareKey::Enter => {
             let idx = model.wizard_agent_idx();
-            let filter_text = model.wizard_agent_filter().to_string();
-            if idx < filtered_agents.len() {
-                let (original_idx, _) = filtered_agents[idx];
-                let agent = model.agents()[original_idx].name.clone();
+            if idx < agent_count {
+                let agent = model.agents()[idx].name.clone();
                 let workspace = model.workspace_input().trim().to_string();
-                let tab_name = model.custom_tab_name().cloned()
+                let tab_name = model
+                    .custom_tab_name()
+                    .cloned()
                     .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
                 let tab_choice = if model.tab_names().contains(&tab_name) {
                     TabChoice::Existing(tab_name)
@@ -747,28 +720,14 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                 if model.error_message().is_empty() {
                     view_preserve_messages(model);
                 }
-            } else {
-                if !filter_text.trim().is_empty() {
-                    *model.agent_name_input_mut() = filter_text.trim().to_string();
-                } else {
-                    model.agent_name_input_mut().clear();
-                }
-                *model.mode_mut() = Mode::NewPaneAgentCreate;
-                *model.agent_form_source_mut() = Some(Mode::NewPaneAgentSelect);
-                model.agent_command_input_mut().clear();
-                model.agent_env_input_mut().clear();
-                model.agent_note_input_mut().clear();
-                *model.agent_form_field_mut() = AgentFormField::Name;
-                reset_status(model);
             }
         }
         BareKey::Esc => cancel_to_view(model),
-        BareKey::Tab => cancel_to_view(model),
         _ => {}
     }
 }
 
-fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_after: bool) {
+fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
     if handle_form_text(model, &key) {
         return;
     }
@@ -783,30 +742,15 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier, launch_a
         BareKey::Enter => match build_agent_from_inputs(model) {
             Ok(agent) => {
                 let result = match model.mode() {
-                    Mode::AgentFormEdit => apply_agent_edit(model, agent.clone()),
-                    Mode::AgentFormCreate | Mode::NewPaneAgentCreate => {
-                        apply_agent_create(model, agent.clone())
-                    }
+                    Mode::AgentFormEdit => apply_agent_edit(model, agent),
+                    Mode::AgentFormCreate => apply_agent_create(model, agent),
                     _ => Err(MaestroError::InvalidMode),
                 };
                 match result {
                     Ok(saved_path) => {
                         *model.status_message_mut() =
                             format!("Agents saved to {}", saved_path.display());
-                        if launch_after {
-                            let workspace = model.workspace_input().trim().to_string();
-                            let tab_name = model.custom_tab_name().cloned()
-                                .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
-                            let tab_choice = if model.tab_names().contains(&tab_name) {
-                                TabChoice::Existing(tab_name)
-                            } else {
-                                TabChoice::New
-                            };
-                            spawn_agent_pane(model, workspace, agent.name.clone(), tab_choice);
-                        }
-                        if model.error_message().is_empty() {
-                            view_preserve_messages(model);
-                        }
+                        view_preserve_messages(model);
                     }
                     Err(err) => {
                         *model.error_message_mut() = err.to_string();
