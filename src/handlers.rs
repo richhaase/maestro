@@ -98,9 +98,9 @@ pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
     }
 
     // Only retain panes that either have a pane_id or have a valid tab_name or have a pending index
-    model
-        .agent_panes_mut()
-        .retain(|p| p.pane_id.is_some() || tab_names.contains(&p.tab_name) || p.pending_tab_index.is_some());
+    model.agent_panes_mut().retain(|p| {
+        p.pane_id.is_some() || tab_names.contains(&p.tab_name) || p.pending_tab_index.is_some()
+    });
     model.clamp_selections();
 }
 
@@ -134,7 +134,11 @@ pub fn apply_pane_update(model: &mut Model, update: PaneManifest) {
                     model.agent_panes_mut().push(AgentPane {
                         pane_title: title,
                         tab_name: tab_name_from_idx.clone(),
-                        pending_tab_index: if tab_name_from_idx.is_empty() { Some(tab_idx) } else { None },
+                        pending_tab_index: if tab_name_from_idx.is_empty() {
+                            Some(tab_idx)
+                        } else {
+                            None
+                        },
                         pane_id: Some(pane.id),
                         workspace_path: String::new(),
                         agent_name,
@@ -272,7 +276,11 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                         model.agent_panes_mut().push(AgentPane {
                             pane_title: pane.title.clone(),
                             tab_name: tab_name_from_idx.clone(),
-                            pending_tab_index: if tab_name_from_idx.is_empty() { Some(tab_idx) } else { None },
+                            pending_tab_index: if tab_name_from_idx.is_empty() {
+                                Some(tab_idx)
+                            } else {
+                                None
+                            },
                             pane_id: Some(pane.id),
                             workspace_path: String::new(),
                             agent_name,
@@ -377,13 +385,11 @@ pub fn spawn_agent_pane(
     let title = format!("{}:{}", title_label, Uuid::new_v4());
     let tab_name = match &tab_choice {
         TabChoice::Existing(name) => name.clone(),
-        TabChoice::New => {
-            model
-                .custom_tab_name()
-                .filter(|s| !s.trim().is_empty())
-                .cloned()
-                .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path))
-        }
+        TabChoice::New => model
+            .custom_tab_name()
+            .filter(|s| !s.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path)),
     };
 
     let resolved_workspace = crate::utils::resolve_workspace_path(&workspace_path);
@@ -557,9 +563,7 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
         Mode::AgentConfig => handle_key_event_agent_config(model, key),
         Mode::NewPaneWorkspace => handle_key_event_new_pane_workspace(model, key),
         Mode::NewPaneAgentSelect => handle_key_event_new_pane_agent_select(model, key),
-        Mode::AgentFormCreate | Mode::AgentFormEdit => {
-            handle_key_event_agent_form(model, key)
-        }
+        Mode::AgentFormCreate | Mode::AgentFormEdit => handle_key_event_agent_form(model, key),
         Mode::DeleteConfirm => handle_key_event_delete_confirm(model, key),
     }
 }
@@ -967,10 +971,9 @@ mod tests {
     #[test]
     fn test_handle_command_pane_opened_uses_ctx_tab_name() {
         let mut model = create_test_model();
-        model.tab_names_mut().extend([
-            "Tab #1".to_string(),
-            "src/plonk".to_string(),
-        ]);
+        model
+            .tab_names_mut()
+            .extend(["Tab #1".to_string(), "src/plonk".to_string()]);
         model.agent_panes_mut().push(AgentPane {
             pane_title: "pane:1".to_string(),
             tab_name: String::new(),
