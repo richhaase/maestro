@@ -515,7 +515,7 @@ agent name="duplicate" {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
-        let all_agents = vec![
+        let all_agents = [
             Agent {
                 name: "cursor".to_string(),
                 command: vec!["cursor-agent".to_string()],
