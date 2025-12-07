@@ -429,11 +429,6 @@ pub fn spawn_agent_pane(
     model.error_message_mut().clear();
     *model.custom_tab_name_mut() = None;
     *model.wizard_agent_filter_mut() = String::new();
-    if model.status_message().is_empty() {
-        *model.status_message_mut() = "Agent pane launched".to_string();
-    } else {
-        *model.status_message_mut() = format!("{}; Agent pane launched", model.status_message());
-    }
 }
 
 pub fn focus_selected(model: &mut Model, selected_idx: usize) {
@@ -451,7 +446,6 @@ pub fn focus_selected(model: &mut Model, selected_idx: usize) {
     if let Some(pid) = pane.pane_id {
         focus_terminal_pane(pid, false);
         model.error_message_mut().clear();
-        *model.status_message_mut() = "Focused agent pane".to_string();
     } else {
         *model.error_message_mut() = "Pane ID not available yet".to_string();
     }
@@ -472,7 +466,6 @@ pub fn kill_selected(model: &mut Model, selected_idx: usize) {
         close_terminal_pane(pid);
         model.agent_panes_mut().retain(|p| p.pane_id != Some(pid));
         model.error_message_mut().clear();
-        *model.status_message_mut() = "Killed agent pane".to_string();
         model.clamp_selections();
     } else {
         *model.error_message_mut() = "no valid target to kill".to_string();
@@ -747,9 +740,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
                     _ => Err(MaestroError::InvalidMode),
                 };
                 match result {
-                    Ok(saved_path) => {
-                        *model.status_message_mut() =
-                            format!("Agents saved to {}", saved_path.display());
+                    Ok(_) => {
                         view_preserve_messages(model);
                     }
                     Err(err) => {
@@ -786,9 +777,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                         .selected_agent()
                         .min(model.agents().len().saturating_sub(1));
                     match persist_agents(model) {
-                        Ok(path) => {
-                            *model.status_message_mut() =
-                                format!("Agent deleted and saved to {}", path.display());
+                        Ok(_) => {
                             model.error_message_mut().clear();
                         }
                         Err(err) => {
@@ -808,7 +797,6 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
 }
 
 fn reset_status(model: &mut Model) {
-    model.status_message_mut().clear();
     model.error_message_mut().clear();
 }
 
@@ -901,7 +889,6 @@ fn move_pane_selection(model: &mut Model, delta: isize) {
     let current = model.selected_pane() as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     *model.selected_pane_mut() = next;
-    model.status_message_mut().clear();
     model.error_message_mut().clear();
 }
 
@@ -913,7 +900,6 @@ fn move_agent_selection(model: &mut Model, delta: isize) {
     let current = model.selected_agent() as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     *model.selected_agent_mut() = next;
-    model.status_message_mut().clear();
     model.error_message_mut().clear();
 }
 

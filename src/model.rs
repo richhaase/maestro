@@ -28,7 +28,6 @@ pub struct Model {
     agents: Vec<Agent>,
     agent_panes: Vec<AgentPane>,
     tab_names: Vec<String>,
-    status_message: String,
     error_message: String,
     mode: Mode,
     quick_launch_agent_name: Option<String>,
@@ -62,10 +61,6 @@ impl Model {
 
     pub fn tab_names_mut(&mut self) -> &mut Vec<String> {
         &mut self.tab_names
-    }
-
-    pub fn status_message(&self) -> &str {
-        &self.status_message
     }
 
     pub fn error_message(&self) -> &str {
@@ -146,10 +141,6 @@ impl Model {
 
     pub fn permissions_denied_mut(&mut self) -> &mut bool {
         &mut self.permissions_denied
-    }
-
-    pub fn status_message_mut(&mut self) -> &mut String {
-        &mut self.status_message
     }
 
     pub fn error_message_mut(&mut self) -> &mut String {

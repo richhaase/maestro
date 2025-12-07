@@ -301,10 +301,8 @@ fn render_status(model: &Model, cols: usize) -> String {
     };
     let msg = if !model.error_message().is_empty() {
         format!("ERROR: {}", model.error_message())
-    } else if model.status_message().is_empty() {
-        hints.to_string()
     } else {
-        format!("{} — {}", model.status_message(), hints)
+        hints.to_string()
     };
     truncate(&msg, cols)
 }
