@@ -132,6 +132,7 @@ pub fn load_agents_default() -> Result<Vec<Agent>> {
         }
     }
 
+    merged.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(merged)
 }
 
