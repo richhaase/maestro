@@ -64,3 +64,19 @@ Use the in-plugin Agent Config section (`a` to add, `e` to edit) to persist chan
 - Run tests: `cargo test`.
 - Run clippy when modifying logic: `cargo clippy --all-targets`.
 - Logs/errors show up in the Zellij host terminal; use `RUST_LOG` as needed when running `zellij`.
+
+## Releasing
+This project uses [cargo-release](https://github.com/crate-ci/cargo-release) for version management.
+
+```bash
+# Install cargo-release (once)
+cargo install cargo-release
+
+# Dry run to preview changes
+cargo release patch --dry-run  # or minor, major
+
+# Perform the release (bumps version, updates CHANGELOG, commits, tags, pushes)
+cargo release patch --execute
+```
+
+When you push a version tag (`v*`), GitHub Actions builds the WASM artifact and creates a release.
