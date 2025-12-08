@@ -228,12 +228,13 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
 /// Find an agent by matching the pane title to the agent's command
 pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
     let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
+
     agents.iter().find(|agent| {
         if agent.command.trim().is_empty() {
             return false;
         }
-        agent.command.eq_ignore_ascii_case(title_base)
-            || title_base.eq_ignore_ascii_case(&agent.name)
+        let full_cmd = build_command(agent).join(" ");
+        full_cmd.eq_ignore_ascii_case(title_base)
     })
 }
 
@@ -326,18 +327,55 @@ mod tests {
             },
         ];
 
+        // Exact match on full command
         assert_eq!(
             find_agent_by_command(&agents, "cursor-agent"),
             Some(&agents[0])
         );
+        assert_eq!(find_agent_by_command(&agents, "claude"), Some(&agents[1]));
+        assert_eq!(
+            find_agent_by_command(&agents, "my-cmd arg1"),
+            Some(&agents[2])
+        );
+
+        // Strips " - suffix" before matching
         assert_eq!(
             find_agent_by_command(&agents, "cursor-agent - some suffix"),
             Some(&agents[0])
         );
-        assert_eq!(find_agent_by_command(&agents, "claude"), Some(&agents[1]));
-        assert_eq!(find_agent_by_command(&agents, "my-cmd"), Some(&agents[2]));
+        assert_eq!(
+            find_agent_by_command(&agents, "my-cmd arg1 - workspace"),
+            Some(&agents[2])
+        );
+
+        // No match for unknown commands or mismatched args
         assert_eq!(find_agent_by_command(&agents, "unknown"), None);
-        assert_eq!(find_agent_by_command(&agents, "cursor"), Some(&agents[0]));
+        assert_eq!(find_agent_by_command(&agents, "my-cmd"), None); // missing arg1
+        assert_eq!(find_agent_by_command(&agents, "my-cmd arg1 arg2"), None); // extra arg
+
+        // Agents with same base command but different args
+        let agents_with_overlap = vec![
+            Agent {
+                name: "codex".to_string(),
+                command: "codex".to_string(),
+                args: None,
+                note: None,
+            },
+            Agent {
+                name: "codex-reviewer".to_string(),
+                command: "codex".to_string(),
+                args: Some(vec!["/review".to_string()]),
+                note: None,
+            },
+        ];
+        assert_eq!(
+            find_agent_by_command(&agents_with_overlap, "codex /review"),
+            Some(&agents_with_overlap[1])
+        );
+        assert_eq!(
+            find_agent_by_command(&agents_with_overlap, "codex"),
+            Some(&agents_with_overlap[0])
+        );
     }
 
     #[test]
