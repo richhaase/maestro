@@ -909,22 +909,13 @@ fn move_agent_selection(model: &mut Model, delta: isize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::Agent;
     use crate::model::Model;
+    use crate::test_helpers::create_test_agent;
     use crate::WASI_HOST_MOUNT;
     use zellij_tile::prelude::{BareKey, KeyWithModifier};
 
     fn create_test_model() -> Model {
         Model::default()
-    }
-
-    fn create_test_agent(name: &str) -> Agent {
-        Agent {
-            name: name.to_string(),
-            command: "echo".to_string(),
-            args: Some(vec![name.to_string()]),
-            note: None,
-        }
     }
 
     fn char_key(c: char) -> KeyWithModifier {

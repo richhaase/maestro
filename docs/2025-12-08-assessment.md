@@ -275,13 +275,13 @@ All tests are unit tests. Missing coverage for:
 - Tab/pane lifecycle end-to-end scenarios
 - Config file round-tripping with actual filesystem
 
-### 6.2 Duplicated Test Helpers
+### 6.2 ~~Duplicated Test Helpers~~ ✅ RESOLVED
 
-`create_test_agent()` is defined identically in both:
-- `model.rs:244-251`
-- `handlers.rs:920-927`
+~~`create_test_agent()` is defined identically in both:~~
+~~- `model.rs:244-251`~~
+~~- `handlers.rs:920-927`~~
 
-**Recommendation**: Extract to a `#[cfg(test)]` module in `lib.rs` or create `tests/common.rs`.
+*Extracted to `test_helpers` module in `lib.rs` on 2025-12-08.*
 
 ### 6.3 Untested Critical Paths
 
@@ -320,7 +320,7 @@ All tests are unit tests. Missing coverage for:
 |-------|--------|--------|--------|
 | Magic numbers | Extract to named constants | Readability | |
 | ~~Hardcoded `/host`~~ | ~~Define constant~~ | ~~Maintainability~~ | ✅ Done |
-| Test helpers | Extract to shared module | Test maintainability | |
+| ~~Test helpers~~ | ~~Extract to shared module~~ | ~~Test maintainability~~ | ✅ Done |
 | Documentation | Add doc comments to public API | Onboarding | |
 
 ### Low Priority

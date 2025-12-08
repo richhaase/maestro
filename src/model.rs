@@ -239,16 +239,8 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{Agent, AgentPane, PaneStatus};
-
-    fn create_test_agent(name: &str) -> Agent {
-        Agent {
-            name: name.to_string(),
-            command: "echo".to_string(),
-            args: Some(vec![name.to_string()]),
-            note: None,
-        }
-    }
+    use crate::agent::{AgentPane, PaneStatus};
+    use crate::test_helpers::create_test_agent;
 
     fn create_test_pane(agent_name: &str, tab_name: &str) -> AgentPane {
         AgentPane {
