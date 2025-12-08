@@ -61,6 +61,7 @@ fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
     match model.agent_form_field() {
         AgentFormField::Name => handle_text_edit(model.agent_name_input_mut(), key),
         AgentFormField::Command => handle_text_edit(model.agent_command_input_mut(), key),
+        AgentFormField::Args => handle_text_edit(model.agent_args_input_mut(), key),
         AgentFormField::Env => handle_text_edit(model.agent_env_input_mut(), key),
         AgentFormField::Note => handle_text_edit(model.agent_note_input_mut(), key),
     }
@@ -417,7 +418,11 @@ pub fn spawn_agent_pane(
     ctx.insert("agent".to_string(), agent.name.clone());
     ctx.insert("tab_name".to_string(), tab_target.clone());
 
-    let mut command_to_run = CommandToRun::new(cmd.join(" "));
+    let mut command_to_run = if cmd.len() > 1 {
+        CommandToRun::new_with_args(cmd[0].clone(), cmd[1..].to_vec())
+    } else {
+        CommandToRun::new(cmd.first().cloned().unwrap_or_default())
+    };
     if let Some(ref resolved) = resolved_workspace {
         command_to_run.cwd = Some(resolved.clone());
     }
@@ -483,14 +488,21 @@ fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     if name.is_empty() {
         return Err(MaestroError::AgentNameRequired);
     }
-    let cmd_parts: Vec<String> = model
-        .agent_command_input()
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
-    if cmd_parts.is_empty() {
+    let command = model.agent_command_input().trim().to_string();
+    if command.is_empty() {
         return Err(MaestroError::CommandRequired);
     }
+    let args_input = model.agent_args_input().trim();
+    let args = if args_input.is_empty() {
+        None
+    } else {
+        Some(
+            args_input
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    };
     let env = parse_env_input(model.agent_env_input()).map_err(MaestroError::EnvParse)?;
     let note = if model.agent_note_input().trim().is_empty() {
         None
@@ -499,7 +511,8 @@ fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     };
     Ok(Agent {
         name,
-        command: cmd_parts,
+        command,
+        args,
         env,
         note,
     })
@@ -831,6 +844,7 @@ fn start_agent_create(model: &mut Model) {
     *model.agent_form_source_mut() = Some(Mode::View);
     model.agent_name_input_mut().clear();
     model.agent_command_input_mut().clear();
+    model.agent_args_input_mut().clear();
     model.agent_env_input_mut().clear();
     model.agent_note_input_mut().clear();
     *model.agent_form_field_mut() = AgentFormField::Name;
@@ -848,7 +862,8 @@ fn start_agent_edit(model: &mut Model) {
         .min(model.agents().len().saturating_sub(1));
     if let Some(agent) = model.agents().get(idx) {
         let agent_name = agent.name.clone();
-        let agent_command = agent.command.join(" ");
+        let agent_command = agent.command.clone();
+        let agent_args = agent.args.as_ref().map(|a| a.join(" ")).unwrap_or_default();
         let agent_env = agent
             .env
             .as_ref()
@@ -862,6 +877,7 @@ fn start_agent_edit(model: &mut Model) {
         let agent_note = agent.note.clone().unwrap_or_default();
         *model.agent_name_input_mut() = agent_name;
         *model.agent_command_input_mut() = agent_command;
+        *model.agent_args_input_mut() = agent_args;
         *model.agent_env_input_mut() = agent_env;
         *model.agent_note_input_mut() = agent_note;
         *model.agent_form_field_mut() = AgentFormField::Name;
@@ -921,7 +937,8 @@ mod tests {
     fn create_test_agent(name: &str) -> Agent {
         Agent {
             name: name.to_string(),
-            command: vec!["echo".to_string(), name.to_string()],
+            command: "echo".to_string(),
+            args: Some(vec![name.to_string()]),
             env: None,
             note: None,
         }
@@ -1036,7 +1053,8 @@ mod tests {
     fn test_build_agent_from_inputs_valid() {
         let mut model = create_test_model();
         *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_command_input_mut() = "echo".to_string();
+        *model.agent_args_input_mut() = "hello world".to_string();
         *model.agent_env_input_mut() = "VAR=value".to_string();
         *model.agent_note_input_mut() = "test note".to_string();
 
@@ -1044,7 +1062,11 @@ mod tests {
         assert!(result.is_ok());
         let agent = result.unwrap();
         assert_eq!(agent.name, "test-agent");
-        assert_eq!(agent.command, vec!["echo", "hello"]);
+        assert_eq!(agent.command, "echo");
+        assert_eq!(
+            agent.args,
+            Some(vec!["hello".to_string(), "world".to_string()])
+        );
         assert!(agent.env.is_some());
         assert_eq!(agent.note, Some("test note".to_string()));
     }
@@ -1053,7 +1075,7 @@ mod tests {
     fn test_build_agent_from_inputs_empty_name() {
         let mut model = create_test_model();
         *model.agent_name_input_mut() = "   ".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_command_input_mut() = "echo".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_err());
@@ -1078,7 +1100,7 @@ mod tests {
     fn test_build_agent_from_inputs_empty_note() {
         let mut model = create_test_model();
         *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello".to_string();
+        *model.agent_command_input_mut() = "echo".to_string();
         *model.agent_note_input_mut() = "   ".to_string();
 
         let result = build_agent_from_inputs(&model);
@@ -1088,15 +1110,34 @@ mod tests {
     }
 
     #[test]
-    fn test_build_agent_from_inputs_multiple_command_args() {
+    fn test_build_agent_from_inputs_with_args() {
         let mut model = create_test_model();
         *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo hello world".to_string();
+        *model.agent_command_input_mut() = "codex".to_string();
+        *model.agent_args_input_mut() = "/review --verbose".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_ok());
         let agent = result.unwrap();
-        assert_eq!(agent.command, vec!["echo", "hello", "world"]);
+        assert_eq!(agent.command, "codex");
+        assert_eq!(
+            agent.args,
+            Some(vec!["/review".to_string(), "--verbose".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_empty_args() {
+        let mut model = create_test_model();
+        *model.agent_name_input_mut() = "test-agent".to_string();
+        *model.agent_command_input_mut() = "echo".to_string();
+        *model.agent_args_input_mut() = "   ".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(agent.command, "echo");
+        assert_eq!(agent.args, None);
     }
 
     #[test]

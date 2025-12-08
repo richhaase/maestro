@@ -21,6 +21,7 @@ pub enum AgentFormField {
     #[default]
     Name,
     Command,
+    Args,
     Env,
     Note,
 }
@@ -29,7 +30,8 @@ pub enum AgentFormField {
 pub fn next_field(current: AgentFormField) -> AgentFormField {
     match current {
         AgentFormField::Name => AgentFormField::Command,
-        AgentFormField::Command => AgentFormField::Env,
+        AgentFormField::Command => AgentFormField::Args,
+        AgentFormField::Args => AgentFormField::Env,
         AgentFormField::Env => AgentFormField::Note,
         AgentFormField::Note => AgentFormField::Name,
     }
@@ -40,7 +42,8 @@ pub fn prev_field(current: AgentFormField) -> AgentFormField {
     match current {
         AgentFormField::Name => AgentFormField::Note,
         AgentFormField::Command => AgentFormField::Name,
-        AgentFormField::Env => AgentFormField::Command,
+        AgentFormField::Args => AgentFormField::Command,
+        AgentFormField::Env => AgentFormField::Args,
         AgentFormField::Note => AgentFormField::Env,
     }
 }
@@ -123,7 +126,11 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         } else {
             &agent.name
         };
-        let command_full = agent.command.join(" ");
+        let command_full = if let Some(args) = &agent.args {
+            format!("{} {}", agent.command, args.join(" "))
+        } else {
+            agent.command.clone()
+        };
         let command = truncate(&command_full, command_col_width);
 
         let note = agent
@@ -276,6 +283,12 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
         model.agent_form_field(),
     ));
     lines.push(mk(
+        "Args",
+        model.agent_args_input(),
+        AgentFormField::Args,
+        model.agent_form_field(),
+    ));
+    lines.push(mk(
         "Env",
         model.agent_env_input(),
         AgentFormField::Env,
@@ -314,7 +327,8 @@ mod tests {
     #[test]
     fn test_next_field() {
         assert_eq!(next_field(AgentFormField::Name), AgentFormField::Command);
-        assert_eq!(next_field(AgentFormField::Command), AgentFormField::Env);
+        assert_eq!(next_field(AgentFormField::Command), AgentFormField::Args);
+        assert_eq!(next_field(AgentFormField::Args), AgentFormField::Env);
         assert_eq!(next_field(AgentFormField::Env), AgentFormField::Note);
         assert_eq!(next_field(AgentFormField::Note), AgentFormField::Name);
     }
@@ -323,7 +337,8 @@ mod tests {
     fn test_prev_field() {
         assert_eq!(prev_field(AgentFormField::Name), AgentFormField::Note);
         assert_eq!(prev_field(AgentFormField::Command), AgentFormField::Name);
-        assert_eq!(prev_field(AgentFormField::Env), AgentFormField::Command);
+        assert_eq!(prev_field(AgentFormField::Args), AgentFormField::Command);
+        assert_eq!(prev_field(AgentFormField::Env), AgentFormField::Args);
         assert_eq!(prev_field(AgentFormField::Note), AgentFormField::Env);
     }
 }

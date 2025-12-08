@@ -178,7 +178,10 @@ pub fn build_command_with_env(agent: &Agent) -> Vec<String> {
             parts.push(format!("{k}={v}"));
         }
     }
-    parts.extend(agent.command.clone());
+    parts.push(agent.command.clone());
+    if let Some(args) = &agent.args {
+        parts.extend(args.clone());
+    }
     parts
 }
 
@@ -233,11 +236,11 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
 pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
     let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
     agents.iter().find(|agent| {
-        if agent.command.is_empty() {
+        if agent.command.trim().is_empty() {
             return false;
         }
-        let first_cmd = &agent.command[0];
-        first_cmd.eq_ignore_ascii_case(title_base) || title_base.eq_ignore_ascii_case(&agent.name)
+        agent.command.eq_ignore_ascii_case(title_base)
+            || title_base.eq_ignore_ascii_case(&agent.name)
     })
 }
 
@@ -291,7 +294,8 @@ mod tests {
     fn test_build_command_with_env() {
         let agent = Agent {
             name: "test".to_string(),
-            command: vec!["echo".to_string(), "hello".to_string()],
+            command: "echo".to_string(),
+            args: Some(vec!["hello".to_string()]),
             env: Some({
                 let mut m = BTreeMap::new();
                 m.insert("VAR1".to_string(), "value1".to_string());
@@ -313,13 +317,28 @@ mod tests {
     fn test_build_command_without_env() {
         let agent = Agent {
             name: "test".to_string(),
-            command: vec!["echo".to_string(), "hello".to_string()],
+            command: "echo".to_string(),
+            args: Some(vec!["hello".to_string()]),
             env: None,
             note: None,
         };
 
         let cmd = build_command_with_env(&agent);
         assert_eq!(cmd, vec!["echo", "hello"]);
+    }
+
+    #[test]
+    fn test_build_command_without_args() {
+        let agent = Agent {
+            name: "test".to_string(),
+            command: "echo".to_string(),
+            args: None,
+            env: None,
+            note: None,
+        };
+
+        let cmd = build_command_with_env(&agent);
+        assert_eq!(cmd, vec!["echo"]);
     }
 
     #[test]
@@ -343,19 +362,22 @@ mod tests {
         let agents = vec![
             Agent {
                 name: "cursor".to_string(),
-                command: vec!["cursor-agent".to_string()],
+                command: "cursor-agent".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
             Agent {
                 name: "claude".to_string(),
-                command: vec!["claude".to_string()],
+                command: "claude".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
             Agent {
                 name: "custom".to_string(),
-                command: vec!["my-cmd".to_string(), "arg1".to_string()],
+                command: "my-cmd".to_string(),
+                args: Some(vec!["arg1".to_string()]),
                 env: None,
                 note: None,
             },

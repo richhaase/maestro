@@ -5,6 +5,7 @@ use crate::ui::{AgentFormField, Mode};
 struct FormState {
     agent_name_input: String,
     agent_command_input: String,
+    agent_args_input: String,
     agent_env_input: String,
     agent_note_input: String,
     agent_form_field: AgentFormField,
@@ -111,6 +112,10 @@ impl Model {
         &self.form.agent_command_input
     }
 
+    pub fn agent_args_input(&self) -> &str {
+        &self.form.agent_args_input
+    }
+
     pub fn agent_env_input(&self) -> &str {
         &self.form.agent_env_input
     }
@@ -173,6 +178,10 @@ impl Model {
 
     pub fn agent_command_input_mut(&mut self) -> &mut String {
         &mut self.form.agent_command_input
+    }
+
+    pub fn agent_args_input_mut(&mut self) -> &mut String {
+        &mut self.form.agent_args_input
     }
 
     pub fn agent_env_input_mut(&mut self) -> &mut String {
@@ -244,7 +253,8 @@ mod tests {
     fn create_test_agent(name: &str) -> Agent {
         Agent {
             name: name.to_string(),
-            command: vec!["echo".to_string(), name.to_string()],
+            command: "echo".to_string(),
+            args: Some(vec![name.to_string()]),
             env: None,
             note: None,
         }

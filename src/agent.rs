@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Agent {
     pub name: String,
-    pub command: Vec<String>,
+    pub command: String,
+    #[serde(default)]
+    pub args: Option<Vec<String>>,
     #[serde(default)]
     pub env: Option<BTreeMap<String, String>>,
     #[serde(default)]
@@ -39,7 +41,7 @@ impl Agent {
         if name.is_empty() {
             bail!("agent name is required");
         }
-        if self.command.is_empty() {
+        if self.command.trim().is_empty() {
             bail!("agent command is required");
         }
         Ok(())
@@ -85,25 +87,29 @@ pub fn default_agents() -> Vec<Agent> {
     vec![
         Agent {
             name: "cursor".to_string(),
-            command: vec!["cursor-agent".to_string()],
+            command: "cursor-agent".to_string(),
+            args: None,
             env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "claude".to_string(),
-            command: vec!["claude".to_string()],
+            command: "claude".to_string(),
+            args: None,
             env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "gemini".to_string(),
-            command: vec!["gemini".to_string()],
+            command: "gemini".to_string(),
+            args: None,
             env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "codex".to_string(),
-            command: vec!["codex".to_string()],
+            command: "codex".to_string(),
+            args: None,
             env: None,
             note: Some("Default agent config".to_string()),
         },
@@ -156,7 +162,7 @@ fn validate_agents(agents: &[Agent]) -> Result<()> {
         if name.is_empty() {
             bail!("agent {idx}: name is required");
         }
-        if agent.command.is_empty() {
+        if agent.command.trim().is_empty() {
             bail!("agent {idx} ({name}): command is required");
         }
         if !seen.insert(name.to_string()) {
@@ -176,17 +182,36 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
         .and_then(|e| e.value().as_string())
         .map(|s| s.to_string());
 
-    let mut command = Vec::new();
+    let mut command = String::new();
+    let mut args: Vec<String> = Vec::new();
     let mut env: BTreeMap<String, String> = BTreeMap::new();
     if let Some(children) = node.children() {
         for child in children.nodes() {
             match child.name().value() {
                 "cmd" => {
+                    // First entry is the command, rest are args
+                    let mut entries = child.entries().iter();
+                    if let Some(first) = entries.next() {
+                        command = first
+                            .value()
+                            .as_string()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| first.value().to_string());
+                    }
+                    for entry in entries {
+                        if let Some(s) = entry.value().as_string() {
+                            args.push(s.to_string());
+                        } else {
+                            args.push(entry.value().to_string());
+                        }
+                    }
+                }
+                "args" => {
                     for entry in child.entries() {
                         if let Some(s) = entry.value().as_string() {
-                            command.push(s.to_string());
+                            args.push(s.to_string());
                         } else {
-                            command.push(entry.value().to_string());
+                            args.push(entry.value().to_string());
                         }
                     }
                 }
@@ -209,6 +234,7 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
     Ok(Agent {
         name: name_val.to_string(),
         command,
+        args: if args.is_empty() { None } else { Some(args) },
         env: if env.is_empty() { None } else { Some(env) },
         note,
     })
@@ -223,12 +249,19 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
             node.insert("note", note.clone());
         }
         let mut children = KdlDocument::new();
-        if !agent.command.is_empty() {
+        if !agent.command.trim().is_empty() {
             let mut cmd_node = KdlNode::new("cmd");
-            for arg in &agent.command {
-                cmd_node.push(arg.clone());
-            }
+            cmd_node.push(agent.command.clone());
             children.nodes_mut().push(cmd_node);
+        }
+        if let Some(args) = &agent.args {
+            if !args.is_empty() {
+                let mut args_node = KdlNode::new("args");
+                for arg in args {
+                    args_node.push(arg.clone());
+                }
+                children.nodes_mut().push(args_node);
+            }
         }
         if let Some(env) = &agent.env {
             for (k, v) in env {
@@ -257,7 +290,8 @@ mod tests {
     fn test_agent_validation() {
         let valid_agent = Agent {
             name: "test".to_string(),
-            command: vec!["echo".to_string(), "hello".to_string()],
+            command: "echo".to_string(),
+            args: Some(vec!["hello".to_string()]),
             env: None,
             note: None,
         };
@@ -265,7 +299,8 @@ mod tests {
 
         let invalid_name = Agent {
             name: "   ".to_string(),
-            command: vec!["echo".to_string()],
+            command: "echo".to_string(),
+            args: None,
             env: None,
             note: None,
         };
@@ -273,7 +308,8 @@ mod tests {
 
         let invalid_command = Agent {
             name: "test".to_string(),
-            command: vec![],
+            command: "".to_string(),
+            args: None,
             env: None,
             note: None,
         };
@@ -288,7 +324,8 @@ mod tests {
         let agents = vec![
             Agent {
                 name: "agent1".to_string(),
-                command: vec!["echo".to_string(), "hello".to_string()],
+                command: "echo".to_string(),
+                args: Some(vec!["hello".to_string()]),
                 env: Some({
                     let mut m = BTreeMap::new();
                     m.insert("VAR".to_string(), "value".to_string());
@@ -298,7 +335,8 @@ mod tests {
             },
             Agent {
                 name: "agent2".to_string(),
-                command: vec!["ls".to_string()],
+                command: "ls".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
@@ -309,7 +347,8 @@ mod tests {
 
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].name, "agent1");
-        assert_eq!(loaded[0].command, vec!["echo", "hello"]);
+        assert_eq!(loaded[0].command, "echo");
+        assert_eq!(loaded[0].args, Some(vec!["hello".to_string()]));
         assert_eq!(loaded[1].name, "agent2");
     }
 
@@ -328,13 +367,15 @@ mod tests {
         let agents = vec![
             Agent {
                 name: "duplicate".to_string(),
-                command: vec!["cmd1".to_string()],
+                command: "cmd1".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
             Agent {
                 name: "duplicate".to_string(),
-                command: vec!["cmd2".to_string()],
+                command: "cmd2".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
@@ -361,7 +402,8 @@ mod tests {
 
         let agents = vec![Agent {
             name: "full_agent".to_string(),
-            command: vec!["cmd".to_string(), "arg1".to_string(), "arg2".to_string()],
+            command: "cmd".to_string(),
+            args: Some(vec!["arg1".to_string(), "arg2".to_string()]),
             env: Some({
                 let mut m = BTreeMap::new();
                 m.insert("KEY1".to_string(), "value1".to_string());
@@ -376,7 +418,11 @@ mod tests {
 
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "full_agent");
-        assert_eq!(loaded[0].command, vec!["cmd", "arg1", "arg2"]);
+        assert_eq!(loaded[0].command, "cmd");
+        assert_eq!(
+            loaded[0].args,
+            Some(vec!["arg1".to_string(), "arg2".to_string()])
+        );
         assert_eq!(loaded[0].env.as_ref().unwrap().len(), 2);
         assert_eq!(
             loaded[0].note,
@@ -404,7 +450,8 @@ mod tests {
 
         let invalid_agents = vec![Agent {
             name: "".to_string(),
-            command: vec!["cmd".to_string()],
+            command: "cmd".to_string(),
+            args: None,
             env: None,
             note: None,
         }];
@@ -469,13 +516,15 @@ agent name="duplicate" {
         let user_agents = vec![
             Agent {
                 name: "custom".to_string(),
-                command: vec!["custom-cmd".to_string()],
+                command: "custom-cmd".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
             Agent {
                 name: "cursor".to_string(),
-                command: vec!["custom-cursor".to_string()],
+                command: "custom-cursor".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
@@ -503,7 +552,7 @@ agent name="duplicate" {
 
         assert_eq!(merged.len(), 5);
         let cursor_agent = merged.iter().find(|a| a.name == "cursor").unwrap();
-        assert_eq!(cursor_agent.command, vec!["custom-cursor"]);
+        assert_eq!(cursor_agent.command, "custom-cursor");
         assert!(merged.iter().any(|a| a.name == "custom"));
         assert!(merged.iter().any(|a| a.name == "claude"));
         assert!(merged.iter().any(|a| a.name == "gemini"));
@@ -518,13 +567,15 @@ agent name="duplicate" {
         let all_agents = [
             Agent {
                 name: "cursor".to_string(),
-                command: vec!["cursor-agent".to_string()],
+                command: "cursor-agent".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
             Agent {
                 name: "custom".to_string(),
-                command: vec!["custom-cmd".to_string()],
+                command: "custom-cmd".to_string(),
+                args: None,
                 env: None,
                 note: None,
             },
