@@ -6,7 +6,6 @@ struct FormState {
     agent_name_input: String,
     agent_command_input: String,
     agent_args_input: String,
-    agent_env_input: String,
     agent_note_input: String,
     agent_form_field: AgentFormField,
     form_target_agent: Option<usize>,
@@ -116,10 +115,6 @@ impl Model {
         &self.form.agent_args_input
     }
 
-    pub fn agent_env_input(&self) -> &str {
-        &self.form.agent_env_input
-    }
-
     pub fn agent_note_input(&self) -> &str {
         &self.form.agent_note_input
     }
@@ -182,10 +177,6 @@ impl Model {
 
     pub fn agent_args_input_mut(&mut self) -> &mut String {
         &mut self.form.agent_args_input
-    }
-
-    pub fn agent_env_input_mut(&mut self) -> &mut String {
-        &mut self.form.agent_env_input
     }
 
     pub fn agent_note_input_mut(&mut self) -> &mut String {
@@ -255,7 +246,6 @@ mod tests {
             name: name.to_string(),
             command: "echo".to_string(),
             args: Some(vec![name.to_string()]),
-            env: None,
             note: None,
         }
     }

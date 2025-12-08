@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -170,15 +169,9 @@ pub fn truncate_path(path: &str, max: usize) -> String {
     format!("{ellipsis}{end}")
 }
 
-/// Build command with environment variables as prefix arguments
-pub fn build_command_with_env(agent: &Agent) -> Vec<String> {
-    let mut parts = Vec::new();
-    if let Some(env) = &agent.env {
-        for (k, v) in env {
-            parts.push(format!("{k}={v}"));
-        }
-    }
-    parts.push(agent.command.clone());
+/// Build command as a list of strings (command followed by args)
+pub fn build_command(agent: &Agent) -> Vec<String> {
+    let mut parts = vec![agent.command.clone()];
     if let Some(args) = &agent.args {
         parts.extend(args.clone());
     }
@@ -244,28 +237,6 @@ pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Optio
     })
 }
 
-/// Parse environment variable input string into a map
-pub fn parse_env_input(input: &str) -> Result<Option<BTreeMap<String, String>>, String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    let mut map = BTreeMap::new();
-    for pair in trimmed.split(',') {
-        if pair.trim().is_empty() {
-            continue;
-        }
-        let mut parts = pair.splitn(2, '=');
-        let key = parts.next().map(str::trim).unwrap_or("").to_string();
-        let val = parts.next().map(str::trim).unwrap_or("").to_string();
-        if key.is_empty() {
-            return Err("env entries must be KEY=VAL".to_string());
-        }
-        map.insert(key, val);
-    }
-    Ok(Some(map))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,40 +262,16 @@ mod tests {
     }
 
     #[test]
-    fn test_build_command_with_env() {
+    fn test_build_command_with_args() {
         let agent = Agent {
             name: "test".to_string(),
             command: "echo".to_string(),
-            args: Some(vec!["hello".to_string()]),
-            env: Some({
-                let mut m = BTreeMap::new();
-                m.insert("VAR1".to_string(), "value1".to_string());
-                m.insert("VAR2".to_string(), "value2".to_string());
-                m
-            }),
+            args: Some(vec!["hello".to_string(), "world".to_string()]),
             note: None,
         };
 
-        let cmd = build_command_with_env(&agent);
-        assert_eq!(cmd.len(), 4);
-        assert!(cmd.contains(&"VAR1=value1".to_string()));
-        assert!(cmd.contains(&"VAR2=value2".to_string()));
-        assert_eq!(cmd[2], "echo");
-        assert_eq!(cmd[3], "hello");
-    }
-
-    #[test]
-    fn test_build_command_without_env() {
-        let agent = Agent {
-            name: "test".to_string(),
-            command: "echo".to_string(),
-            args: Some(vec!["hello".to_string()]),
-            env: None,
-            note: None,
-        };
-
-        let cmd = build_command_with_env(&agent);
-        assert_eq!(cmd, vec!["echo", "hello"]);
+        let cmd = build_command(&agent);
+        assert_eq!(cmd, vec!["echo", "hello", "world"]);
     }
 
     #[test]
@@ -333,11 +280,10 @@ mod tests {
             name: "test".to_string(),
             command: "echo".to_string(),
             args: None,
-            env: None,
             note: None,
         };
 
-        let cmd = build_command_with_env(&agent);
+        let cmd = build_command(&agent);
         assert_eq!(cmd, vec!["echo"]);
     }
 
@@ -364,21 +310,18 @@ mod tests {
                 name: "cursor".to_string(),
                 command: "cursor-agent".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
             Agent {
                 name: "claude".to_string(),
                 command: "claude".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
             Agent {
                 name: "custom".to_string(),
                 command: "my-cmd".to_string(),
                 args: Some(vec!["arg1".to_string()]),
-                env: None,
                 note: None,
             },
         ];
@@ -395,33 +338,6 @@ mod tests {
         assert_eq!(find_agent_by_command(&agents, "my-cmd"), Some(&agents[2]));
         assert_eq!(find_agent_by_command(&agents, "unknown"), None);
         assert_eq!(find_agent_by_command(&agents, "cursor"), Some(&agents[0]));
-    }
-
-    #[test]
-    fn test_parse_env_input() {
-        // Valid input
-        let result = parse_env_input("KEY1=value1,KEY2=value2").unwrap();
-        assert!(result.is_some());
-        let map = result.unwrap();
-        assert_eq!(map.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(map.get("KEY2"), Some(&"value2".to_string()));
-
-        // Empty input
-        let result = parse_env_input("").unwrap();
-        assert!(result.is_none());
-
-        // Whitespace handling
-        let result = parse_env_input(" KEY1 = value1 , KEY2 = value2 ").unwrap();
-        assert!(result.is_some());
-        let map = result.unwrap();
-        assert_eq!(map.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(map.get("KEY2"), Some(&"value2".to_string()));
-
-        // Invalid input (missing key)
-        assert!(parse_env_input("=value").is_err());
-
-        // Invalid input (empty key)
-        assert!(parse_env_input("  =value").is_err());
     }
 
     #[test]

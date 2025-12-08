@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,8 +12,6 @@ pub struct Agent {
     pub command: String,
     #[serde(default)]
     pub args: Option<Vec<String>>,
-    #[serde(default)]
-    pub env: Option<BTreeMap<String, String>>,
     #[serde(default)]
     pub note: Option<String>,
 }
@@ -89,28 +87,24 @@ pub fn default_agents() -> Vec<Agent> {
             name: "cursor".to_string(),
             command: "cursor-agent".to_string(),
             args: None,
-            env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "claude".to_string(),
             command: "claude".to_string(),
             args: None,
-            env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "gemini".to_string(),
             command: "gemini".to_string(),
             args: None,
-            env: None,
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "codex".to_string(),
             command: "codex".to_string(),
             args: None,
-            env: None,
             note: Some("Default agent config".to_string()),
         },
     ]
@@ -184,7 +178,6 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
 
     let mut command = String::new();
     let mut args: Vec<String> = Vec::new();
-    let mut env: BTreeMap<String, String> = BTreeMap::new();
     if let Some(children) = node.children() {
         for child in children.nodes() {
             match child.name().value() {
@@ -215,18 +208,6 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
                         }
                     }
                 }
-                "env" => {
-                    let key = child
-                        .get(0)
-                        .and_then(|e| e.value().as_string())
-                        .ok_or_else(|| anyhow!("env missing key"))?;
-                    let val = child
-                        .get(1)
-                        .and_then(|e| e.value().as_string())
-                        .unwrap_or("")
-                        .to_string();
-                    env.insert(key.to_string(), val);
-                }
                 _ => {}
             }
         }
@@ -235,7 +216,6 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
         name: name_val.to_string(),
         command,
         args: if args.is_empty() { None } else { Some(args) },
-        env: if env.is_empty() { None } else { Some(env) },
         note,
     })
 }
@@ -263,14 +243,6 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
                 children.nodes_mut().push(args_node);
             }
         }
-        if let Some(env) = &agent.env {
-            for (k, v) in env {
-                let mut env_node = KdlNode::new("env");
-                env_node.push(k.clone());
-                env_node.push(v.clone());
-                children.nodes_mut().push(env_node);
-            }
-        }
         node.set_children(children);
         doc.nodes_mut().push(node);
     }
@@ -292,7 +264,6 @@ mod tests {
             name: "test".to_string(),
             command: "echo".to_string(),
             args: Some(vec!["hello".to_string()]),
-            env: None,
             note: None,
         };
         assert!(valid_agent.validate().is_ok());
@@ -301,7 +272,6 @@ mod tests {
             name: "   ".to_string(),
             command: "echo".to_string(),
             args: None,
-            env: None,
             note: None,
         };
         assert!(invalid_name.validate().is_err());
@@ -310,7 +280,6 @@ mod tests {
             name: "test".to_string(),
             command: "".to_string(),
             args: None,
-            env: None,
             note: None,
         };
         assert!(invalid_command.validate().is_err());
@@ -326,18 +295,12 @@ mod tests {
                 name: "agent1".to_string(),
                 command: "echo".to_string(),
                 args: Some(vec!["hello".to_string()]),
-                env: Some({
-                    let mut m = BTreeMap::new();
-                    m.insert("VAR".to_string(), "value".to_string());
-                    m
-                }),
                 note: Some("Test agent".to_string()),
             },
             Agent {
                 name: "agent2".to_string(),
                 command: "ls".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
         ];
@@ -369,14 +332,12 @@ mod tests {
                 name: "duplicate".to_string(),
                 command: "cmd1".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
             Agent {
                 name: "duplicate".to_string(),
                 command: "cmd2".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
         ];
@@ -404,12 +365,6 @@ mod tests {
             name: "full_agent".to_string(),
             command: "cmd".to_string(),
             args: Some(vec!["arg1".to_string(), "arg2".to_string()]),
-            env: Some({
-                let mut m = BTreeMap::new();
-                m.insert("KEY1".to_string(), "value1".to_string());
-                m.insert("KEY2".to_string(), "value2".to_string());
-                m
-            }),
             note: Some("A test agent with all fields".to_string()),
         }];
 
@@ -423,7 +378,6 @@ mod tests {
             loaded[0].args,
             Some(vec!["arg1".to_string(), "arg2".to_string()])
         );
-        assert_eq!(loaded[0].env.as_ref().unwrap().len(), 2);
         assert_eq!(
             loaded[0].note,
             Some("A test agent with all fields".to_string())
@@ -452,7 +406,6 @@ mod tests {
             name: "".to_string(),
             command: "cmd".to_string(),
             args: None,
-            env: None,
             note: None,
         }];
 
@@ -518,14 +471,12 @@ agent name="duplicate" {
                 name: "custom".to_string(),
                 command: "custom-cmd".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
             Agent {
                 name: "cursor".to_string(),
                 command: "custom-cursor".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
         ];
@@ -569,14 +520,12 @@ agent name="duplicate" {
                 name: "cursor".to_string(),
                 command: "cursor-agent".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
             Agent {
                 name: "custom".to_string(),
                 command: "custom-cmd".to_string(),
                 args: None,
-                env: None,
                 note: None,
             },
         ];
