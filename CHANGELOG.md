@@ -2,6 +2,8 @@
 All notable changes are tracked here following [Keep a Changelog](https://keepachangelog.com/) and Semantic Versioning once releases are tagged.
 
 ## [Unreleased]
+
+## [0.1.3] - 2025-12-08
 ### Breaking Changes
 - Dropped the Agent `env` field across serialization, forms, and command construction; existing `env` entries are ignored and removed when saving, so set environment variables in your shell instead. (`de11097`)
 
