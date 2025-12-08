@@ -198,17 +198,12 @@ For a WASM plugin with a single entry point (`main.rs`), none of these need to b
 
 ## 5. Specific Code Issues
 
-### 5.1 Defensive Cloning
+### 5.1 ~~Defensive Cloning~~ ✅ RESOLVED
 
-```rust
-// handlers.rs:82-83 - Double clone
-let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
-*model.tab_names_mut() = tab_names.clone();
-
-// handlers.rs:370-371 - Clone entire agent to use a few fields
-let agent = match model.agents().iter().find(|a| a.name == agent_name) {
-    Some(a) => a.clone(),
-```
+*Fixed unnecessary clones in `handlers.rs` on 2025-12-08:*
+- *`apply_tab_update`: removed double clone by reordering assignment*
+- *`spawn_agent_pane`: extract command only instead of cloning entire Agent*
+- *`rebuild_from_session_infos`: iterate by reference instead of cloning*
 
 ### 5.2 ~~Magic Numbers~~ ✅ RESOLVED
 
@@ -309,11 +304,11 @@ All tests are unit tests. Missing coverage for:
 
 ### Low Priority
 
-| Issue | Action | Impact |
-|-------|--------|--------|
-| Accessor boilerplate | Make fields `pub(crate)` | Code reduction |
-| Defensive cloning | Use references where possible | Performance |
-| Public API surface | Change modules to `pub(crate)` | Encapsulation |
+| Issue | Action | Impact | Status |
+|-------|--------|--------|--------|
+| Accessor boilerplate | Make fields `pub(crate)` | Code reduction | |
+| ~~Defensive cloning~~ | ~~Use references where possible~~ | ~~Performance~~ | ✅ Done |
+| Public API surface | Change modules to `pub(crate)` | Encapsulation | |
 
 ---
 

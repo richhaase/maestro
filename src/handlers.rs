@@ -80,7 +80,6 @@ pub fn handle_permission_result(model: &mut Model, status: PermissionStatus) {
 pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
     tabs.sort_by_key(|t| t.position);
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
-    *model.tab_names_mut() = tab_names.clone();
 
     // Resolve pending_tab_index to actual tab names
     // Only update if current tab_name is empty or no longer exists in the tab list
@@ -99,6 +98,8 @@ pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
     model.agent_panes_mut().retain(|p| {
         p.pane_id.is_some() || tab_names.contains(&p.tab_name) || p.pending_tab_index.is_some()
     });
+
+    *model.tab_names_mut() = tab_names;
     model.clamp_selections();
 }
 
@@ -224,8 +225,8 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
             tab_lookup.insert(tab.position, tab.name.clone());
         }
 
-        for (tab_idx, pane_list) in session.panes.clone().panes {
-            let tab_name_from_idx = tab_lookup.get(&tab_idx).cloned().unwrap_or_default();
+        for (tab_idx, pane_list) in &session.panes.panes {
+            let tab_name_from_idx = tab_lookup.get(tab_idx).cloned().unwrap_or_default();
 
             let mut unmatched_in_tab: Vec<usize> = if !tab_name_from_idx.is_empty() {
                 model
@@ -275,7 +276,7 @@ fn rebuild_from_session_infos(model: &mut Model, session_infos: &[SessionInfo]) 
                             pane_title: pane.title.clone(),
                             tab_name: tab_name_from_idx.clone(),
                             pending_tab_index: if tab_name_from_idx.is_empty() {
-                                Some(tab_idx)
+                                Some(*tab_idx)
                             } else {
                                 None
                             },
@@ -367,8 +368,9 @@ pub fn spawn_agent_pane(
         *model.error_message_mut() = "permissions not granted".to_string();
         return;
     }
-    let agent = match model.agents().iter().find(|a| a.name == agent_name) {
-        Some(a) => a.clone(),
+    // Extract what we need from the agent before any mutable borrows
+    let cmd = match model.agents().iter().find(|a| a.name == agent_name) {
+        Some(a) => build_command(a),
         None => {
             *model.error_message_mut() = "agent not found".to_string();
             return;
@@ -376,7 +378,7 @@ pub fn spawn_agent_pane(
     };
     let workspace_label = workspace_basename(&workspace_path);
     let title_label = if workspace_label.is_empty() {
-        agent.name.clone()
+        agent_name.clone()
     } else {
         workspace_label
     };
@@ -406,13 +408,12 @@ pub fn spawn_agent_pane(
         }
     };
     go_to_tab_name(&tab_target);
-    let cmd = build_command(&agent);
     let mut ctx = BTreeMap::new();
     ctx.insert("pane_title".to_string(), title.clone());
     if let Some(ref resolved) = resolved_workspace {
         ctx.insert("cwd".to_string(), resolved.to_string_lossy().to_string());
     }
-    ctx.insert("agent".to_string(), agent.name.clone());
+    ctx.insert("agent".to_string(), agent_name.clone());
     ctx.insert("tab_name".to_string(), tab_target.clone());
 
     let mut command_to_run = if cmd.len() > 1 {
