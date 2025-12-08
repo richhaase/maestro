@@ -3,6 +3,8 @@ All notable changes are tracked here following [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.1.2] - 2025-12-08
+
 ## [0.1.1] - 2025-12-07
 
 ### Features
