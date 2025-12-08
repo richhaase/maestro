@@ -3,6 +3,8 @@ All notable changes are tracked here following [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.1.4] - 2025-12-08
+
 ## [0.1.3] - 2025-12-08
 ### Breaking Changes
 - Dropped the Agent `env` field across serialization, forms, and command construction; existing `env` entries are ignored and removed when saving, so set environment variables in your shell instead. (`de11097`)
