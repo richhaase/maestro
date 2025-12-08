@@ -210,25 +210,9 @@ let agent = match model.agents().iter().find(|a| a.name == agent_name) {
     Some(a) => a.clone(),
 ```
 
-### 5.2 Magic Numbers
+### 5.2 ~~Magic Numbers~~ ✅ RESOLVED
 
-```rust
-// ui.rs:88-91 - Undocumented color codes
-let status_color = match pane.status {
-    PaneStatus::Running => 2,   // Green?
-    PaneStatus::Exited(_) => 1, // Red?
-};
-
-// ui.rs:184 - Arbitrary limit
-let max_display = 5;
-```
-
-**Recommendation**: Define named constants:
-```rust
-const COLOR_SUCCESS: u8 = 2;
-const COLOR_ERROR: u8 = 1;
-const MAX_SUGGESTIONS_DISPLAYED: usize = 5;
-```
+*Added named constants `COLOR_GREEN`, `COLOR_RED`, and `MAX_SUGGESTIONS_DISPLAYED` in `ui.rs` on 2025-12-08.*
 
 ### 5.3 ~~Hardcoded Paths~~ ✅ RESOLVED
 
@@ -318,7 +302,7 @@ All tests are unit tests. Missing coverage for:
 
 | Issue | Action | Impact | Status |
 |-------|--------|--------|--------|
-| Magic numbers | Extract to named constants | Readability | |
+| ~~Magic numbers~~ | ~~Extract to named constants~~ | ~~Readability~~ | ✅ Done |
 | ~~Hardcoded `/host`~~ | ~~Define constant~~ | ~~Maintainability~~ | ✅ Done |
 | ~~Test helpers~~ | ~~Extract to shared module~~ | ~~Test maintainability~~ | ✅ Done |
 | Documentation | Add doc comments to public API | Onboarding | |

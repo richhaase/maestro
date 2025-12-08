@@ -5,6 +5,10 @@ use crate::model::Model;
 use crate::utils::truncate;
 use crate::WASI_HOST_MOUNT;
 
+const COLOR_GREEN: usize = 2;
+const COLOR_RED: usize = 1;
+const MAX_SUGGESTIONS_DISPLAYED: usize = 5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
@@ -87,8 +91,8 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
         };
 
         let status_color = match pane.status {
-            PaneStatus::Running => 2,
-            PaneStatus::Exited(_) => 1,
+            PaneStatus::Running => COLOR_GREEN,
+            PaneStatus::Exited(_) => COLOR_RED,
         };
 
         let mut row = vec![
@@ -183,7 +187,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 let suggestions = crate::utils::get_path_suggestions(input);
                 if !suggestions.is_empty() {
                     lines.push("".to_string());
-                    let max_display = 5;
+                    let max_display = MAX_SUGGESTIONS_DISPLAYED;
                     let start_idx = if model.browse_selected_idx() < max_display {
                         0
                     } else {
