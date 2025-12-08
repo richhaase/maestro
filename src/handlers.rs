@@ -911,6 +911,7 @@ mod tests {
     use super::*;
     use crate::agent::Agent;
     use crate::model::Model;
+    use crate::WASI_HOST_MOUNT;
     use zellij_tile::prelude::{BareKey, KeyWithModifier};
 
     fn create_test_model() -> Model {
@@ -955,7 +956,7 @@ mod tests {
 
     #[test]
     fn test_derive_tab_name_from_workspace_host_prefix() {
-        let derived = derive_tab_name_from_workspace("/host/src/maestro");
+        let derived = derive_tab_name_from_workspace(&format!("{}/src/maestro", WASI_HOST_MOUNT));
         assert_eq!(derived, Some("src/maestro".to_string()));
     }
 

@@ -224,7 +224,7 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
 }
 
 fn config_base_dir() -> Result<PathBuf> {
-    Ok(PathBuf::from("/host/.config/maestro"))
+    Ok(PathBuf::from(format!("{}/.config/maestro", crate::WASI_HOST_MOUNT)))
 }
 
 #[cfg(test)]
@@ -383,7 +383,7 @@ agent name="duplicate" {
     fn test_default_config_path() {
         let path = default_config_path().unwrap();
         assert!(path.to_string_lossy().ends_with("agents.kdl"));
-        assert!(path.to_string_lossy().contains("/host/.config/maestro"));
+        assert!(path.to_string_lossy().contains(&format!("{}/.config/maestro", crate::WASI_HOST_MOUNT)));
     }
 
     #[test]

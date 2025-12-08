@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::agent::Agent;
+use crate::WASI_HOST_MOUNT;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirEntry {
@@ -48,11 +49,12 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
     }
 
     let home = get_home_directory();
+    let host_prefix = format!("{}/", WASI_HOST_MOUNT);
 
-    let (base_path, filter_segment) = if trimmed == "/host" || trimmed == "/host/" {
+    let (base_path, filter_segment) = if trimmed == WASI_HOST_MOUNT || trimmed == host_prefix {
         (home.clone(), String::new())
-    } else if trimmed.starts_with("/host/") {
-        let relative = trimmed.strip_prefix("/host/").unwrap_or("");
+    } else if trimmed.starts_with(&host_prefix) {
+        let relative = trimmed.strip_prefix(&host_prefix).unwrap_or("");
         if relative.is_empty() {
             (home.clone(), String::new())
         } else if relative.ends_with('/') {
@@ -107,7 +109,8 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
                 &entry.path
             };
             format!(
-                "/host/{}",
+                "{}/{}",
+                WASI_HOST_MOUNT,
                 relative.to_string_lossy().trim_start_matches('/')
             )
         })
@@ -158,31 +161,30 @@ pub fn default_tab_name(workspace_path: &str) -> String {
 }
 
 /// Get the actual home directory path
-/// Tries to get HOME from environment, falls back to resolving /host if needed
 pub fn get_home_directory() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home);
     }
-    PathBuf::from("/host")
+    PathBuf::from(WASI_HOST_MOUNT)
 }
 
-/// Resolve a workspace path for Zellij API calls
-/// Converts /host paths to relative paths (since Zellij cwd is home directory)
-/// Empty path returns None (Zellij will use default cwd)
+/// Resolve a workspace path for Zellij API calls.
+/// Empty path returns None (Zellij will use default cwd).
 pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return None;
     }
 
-    if trimmed.starts_with("/host/") {
-        let relative = trimmed.strip_prefix("/host/").unwrap_or("");
+    let host_prefix = format!("{}/", WASI_HOST_MOUNT);
+    if trimmed.starts_with(&host_prefix) {
+        let relative = trimmed.strip_prefix(&host_prefix).unwrap_or("");
         if relative.is_empty() {
             None
         } else {
             Some(PathBuf::from(relative))
         }
-    } else if trimmed == "/host" {
+    } else if trimmed == WASI_HOST_MOUNT {
         None
     } else {
         Some(PathBuf::from(trimmed))

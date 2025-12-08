@@ -230,18 +230,18 @@ const COLOR_ERROR: u8 = 1;
 const MAX_SUGGESTIONS_DISPLAYED: usize = 5;
 ```
 
-### 5.3 Hardcoded Paths
+### 5.3 ~~Hardcoded Paths~~ ✅ RESOLVED
 
-The `/host` WASI mount path appears in multiple locations:
+~~The `/host` WASI mount path appears in multiple locations:~~
 
-- `agent.rs:253` - `config_base_dir()`
-- `utils.rs:52-54` - `get_path_suggestions()`
-- `utils.rs:109-112` - Path formatting
-- `utils.rs:202` - `get_home_directory()` fallback
-- `utils.rs:214-225` - `resolve_workspace_path()`
-- `ui.rs:173, 201` - Display stripping
+~~- `agent.rs:253` - `config_base_dir()`~~
+~~- `utils.rs:52-54` - `get_path_suggestions()`~~
+~~- `utils.rs:109-112` - Path formatting~~
+~~- `utils.rs:202` - `get_home_directory()` fallback~~
+~~- `utils.rs:214-225` - `resolve_workspace_path()`~~
+~~- `ui.rs:173, 201` - Display stripping~~
 
-**Recommendation**: Define a constant `const WASI_HOST_MOUNT: &str = "/host";`
+*Added `WASI_HOST_MOUNT` constant in `lib.rs`, updated all 15 references on 2025-12-08.*
 
 ### 5.4 Unused Variable
 
@@ -316,12 +316,12 @@ All tests are unit tests. Missing coverage for:
 
 ### Medium Priority
 
-| Issue | Action | Impact |
-|-------|--------|--------|
-| Magic numbers | Extract to named constants | Readability |
-| Hardcoded `/host` | Define constant | Maintainability |
-| Test helpers | Extract to shared module | Test maintainability |
-| Documentation | Add doc comments to public API | Onboarding |
+| Issue | Action | Impact | Status |
+|-------|--------|--------|--------|
+| Magic numbers | Extract to named constants | Readability | |
+| ~~Hardcoded `/host`~~ | ~~Define constant~~ | ~~Maintainability~~ | ✅ Done |
+| Test helpers | Extract to shared module | Test maintainability | |
+| Documentation | Add doc comments to public API | Onboarding | |
 
 ### Low Priority
 

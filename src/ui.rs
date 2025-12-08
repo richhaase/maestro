@@ -3,6 +3,7 @@ use zellij_tile::ui_components::{serialize_table, Table, Text};
 use crate::agent::PaneStatus;
 use crate::model::Model;
 use crate::utils::truncate;
+use crate::WASI_HOST_MOUNT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
@@ -170,7 +171,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         Mode::NewPaneWorkspace => {
             let mut lines = Vec::new();
             let input = model.workspace_input();
-            let display_input = input.strip_prefix("/host/").unwrap_or(input);
+            let host_prefix = format!("{}/", WASI_HOST_MOUNT);
+            let display_input = input.strip_prefix(&host_prefix).unwrap_or(input);
             lines.push("New Agent Pane: workspace path".to_string());
             lines.push(format!(
                 "> {}_",
@@ -198,7 +200,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                         } else {
                             " "
                         };
-                        let display_path = suggestion.strip_prefix("/host/").unwrap_or(suggestion);
+                        let display_path = suggestion.strip_prefix(&host_prefix).unwrap_or(suggestion);
                         lines.push(format!(
                             "{} {}",
                             prefix,
