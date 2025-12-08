@@ -33,19 +33,6 @@ pub struct AgentPane {
     pub status: PaneStatus,
 }
 
-impl Agent {
-    pub fn validate(&self) -> Result<()> {
-        let name = self.name.trim();
-        if name.is_empty() {
-            bail!("agent name is required");
-        }
-        if self.command.trim().is_empty() {
-            bail!("agent command is required");
-        }
-        Ok(())
-    }
-}
-
 pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
     let data = match fs::read_to_string(path) {
         Ok(s) => s,
@@ -134,19 +121,6 @@ pub fn load_agents_default() -> Result<Vec<Agent>> {
 
     merged.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(merged)
-}
-
-pub fn save_agents_default(agents: &[Agent]) -> Result<()> {
-    let path = default_config_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).context("create config directory")?;
-    }
-    let user_agents: Vec<Agent> = agents
-        .iter()
-        .filter(|a| !is_default_agent(&a.name))
-        .cloned()
-        .collect();
-    save_agents(&path, &user_agents)
 }
 
 fn validate_agents(agents: &[Agent]) -> Result<()> {
@@ -257,33 +231,6 @@ fn config_base_dir() -> Result<PathBuf> {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_agent_validation() {
-        let valid_agent = Agent {
-            name: "test".to_string(),
-            command: "echo".to_string(),
-            args: Some(vec!["hello".to_string()]),
-            note: None,
-        };
-        assert!(valid_agent.validate().is_ok());
-
-        let invalid_name = Agent {
-            name: "   ".to_string(),
-            command: "echo".to_string(),
-            args: None,
-            note: None,
-        };
-        assert!(invalid_name.validate().is_err());
-
-        let invalid_command = Agent {
-            name: "test".to_string(),
-            command: "".to_string(),
-            args: None,
-            note: None,
-        };
-        assert!(invalid_command.validate().is_err());
-    }
 
     #[test]
     fn test_save_and_load_agents() {
@@ -508,38 +455,5 @@ agent name="duplicate" {
         assert!(merged.iter().any(|a| a.name == "claude"));
         assert!(merged.iter().any(|a| a.name == "gemini"));
         assert!(merged.iter().any(|a| a.name == "codex"));
-    }
-
-    #[test]
-    fn test_save_agents_default_filters_out_defaults() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path();
-
-        let all_agents = [
-            Agent {
-                name: "cursor".to_string(),
-                command: "cursor-agent".to_string(),
-                args: None,
-                note: None,
-            },
-            Agent {
-                name: "custom".to_string(),
-                command: "custom-cmd".to_string(),
-                args: None,
-                note: None,
-            },
-        ];
-
-        let user_agents: Vec<Agent> = all_agents
-            .iter()
-            .filter(|a| !is_default_agent(&a.name))
-            .cloned()
-            .collect();
-
-        save_agents(path, &user_agents).unwrap();
-
-        let saved = load_agents(path).unwrap();
-        assert_eq!(saved.len(), 1);
-        assert_eq!(saved[0].name, "custom");
     }
 }

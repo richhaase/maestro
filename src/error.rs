@@ -17,9 +17,6 @@ pub enum MaestroError {
 
     #[error("Config error: {0}")]
     Config(#[from] anyhow::Error),
-
-    #[error("Env parse error: {0}")]
-    EnvParse(String),
 }
 
 pub type MaestroResult<T> = Result<T, MaestroError>;
@@ -44,9 +41,6 @@ mod tests {
 
         let err = MaestroError::InvalidMode;
         assert_eq!(err.to_string(), "Invalid mode");
-
-        let err = MaestroError::EnvParse("invalid format".to_string());
-        assert_eq!(err.to_string(), "Env parse error: invalid format");
     }
 
     #[test]

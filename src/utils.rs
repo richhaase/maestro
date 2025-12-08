@@ -133,42 +133,6 @@ pub fn truncate(s: &str, max: usize) -> String {
     out
 }
 
-/// Truncate a path, replacing home directory with ~ and truncating from the end
-pub fn truncate_path(path: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    if path.is_empty() {
-        return "—".to_string();
-    }
-
-    let home = std::env::var("HOME").unwrap_or_default();
-    let relative_path = if !home.is_empty() && path.starts_with(&home) {
-        path.replacen(&home, "~", 1)
-    } else {
-        path.to_string()
-    };
-
-    if relative_path.chars().count() <= max {
-        return relative_path;
-    }
-
-    let chars: Vec<char> = relative_path.chars().collect();
-    if chars.len() <= max {
-        return relative_path;
-    }
-
-    let ellipsis = "…";
-    let ellipsis_len = ellipsis.chars().count();
-    if max <= ellipsis_len {
-        return truncate(&relative_path, max);
-    }
-
-    let take_from_end = max - ellipsis_len;
-    let end: String = chars.iter().rev().take(take_from_end).rev().collect();
-    format!("{ellipsis}{end}")
-}
-
 /// Build command as a list of strings (command followed by args)
 pub fn build_command(agent: &Agent) -> Vec<String> {
     let mut parts = vec![agent.command.clone()];
@@ -249,17 +213,6 @@ mod tests {
         assert_eq!(truncate("hello", 3), "hel…");
         assert_eq!(truncate("hello", 0), "");
         assert_eq!(truncate("", 5), "");
-    }
-
-    #[test]
-    fn test_truncate_path() {
-        assert_eq!(truncate_path("", 10), "—");
-        assert_eq!(truncate_path("/short/path", 20), "/short/path");
-
-        let long_path = "/very/long/path/that/exceeds/max/length";
-        let result = truncate_path(long_path, 20);
-        assert!(result.chars().count() <= 20);
-        assert!(result.starts_with('…'));
     }
 
     #[test]
