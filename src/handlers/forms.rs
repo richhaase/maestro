@@ -1,6 +1,6 @@
 use zellij_tile::prelude::{BareKey, KeyWithModifier};
 
-use crate::agent::{default_config_path, is_default_agent, save_agents, Agent};
+use crate::agent::{default_config_path, save_agents, Agent};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
 use crate::ui::{AgentFormField, Mode};
@@ -138,13 +138,8 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<()> {
             message: e.to_string(),
         })?;
     }
-    let user_agents: Vec<_> = model
-        .agents
-        .iter()
-        .filter(|a| !is_default_agent(&a.name))
-        .cloned()
-        .collect();
-    save_agents(&path, &user_agents)?;
+    // Persist full agent list so user customizations to built-in defaults are retained.
+    save_agents(&path, &model.agents)?;
     model.agents = crate::agent::load_agents_default()?;
     model.clamp_selections();
     model.error_message.clear();
