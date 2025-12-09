@@ -76,44 +76,19 @@ fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
 
 ---
 
-## 2. Error Handling Inconsistencies
+## 2. ~~Error Handling Inconsistencies~~ ✅ RESOLVED
 
-### 2.1 Mixed Error Types
+*Standardized error handling on 2025-12-08:*
+- *Added 7 new `MaestroError` variants for user-facing errors*
+- *Replaced all direct string error messages in `handlers.rs` with typed errors*
+- *Converted `utils.rs::read_directory` from `Result<T, String>` to `anyhow::Result`*
 
-The codebase uses three different error handling approaches:
-
-| Module | Error Type | Example |
+| Module | Error Type | Purpose |
 |--------|------------|---------|
-| `error.rs` | `MaestroError` (thiserror) | Form validation |
-| `agent.rs` | `anyhow::Result` | File I/O |
-| `utils.rs` | `Result<T, String>` | Directory reading |
-
-```rust
-// utils.rs:14
-pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>, String>
-
-// agent.rs:49
-pub fn load_agents(path: &Path) -> Result<Vec<Agent>>  // anyhow
-
-// handlers.rs:483
-fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent>
-```
-
-**Recommendation**: Standardize on `MaestroError` for all errors that may surface to users, use `anyhow` internally for context chaining.
-
-### 2.2 Direct Error Message Setting
-
-Some errors bypass the type system entirely:
-
-```rust
-// handlers.rs:367 - Direct string
-*model.error_message_mut() = "permissions not granted".to_string();
-
-// handlers.rs:759 - Through error type
-*model.error_message_mut() = err.to_string();
-```
-
-**Recommendation**: All user-facing errors should go through `MaestroError` for consistency and testability.
+| `error.rs` | `MaestroError` (thiserror) | User-facing errors (13 variants) |
+| `agent.rs` | `anyhow::Result` | Internal file I/O with context |
+| `utils.rs` | `anyhow::Result` | Internal operations with context |
+| `handlers.rs` | `MaestroResult` | User-facing operations |
 
 ---
 
@@ -289,7 +264,7 @@ All tests are unit tests. Missing coverage for:
 | Issue | Action | Impact | Status |
 |-------|--------|--------|--------|
 | ~~Inconsistent key bindings~~ | ~~Standardize on arrows, add fzf filter~~ | ~~UX consistency~~ | ✅ Done |
-| Mixed error handling | Standardize on `MaestroError` | Maintainability | |
+| ~~Mixed error handling~~ | ~~Standardize on `MaestroError`~~ | ~~Maintainability~~ | ✅ Done |
 | Handler bloat | Split `handlers.rs` into modules | Code organization | |
 | ~~Dead code~~ | ~~Remove unused items~~ | ~~Clarity~~ | ✅ Done |
 

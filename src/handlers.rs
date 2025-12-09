@@ -365,14 +365,14 @@ pub fn spawn_agent_pane(
     tab_choice: TabChoice,
 ) {
     if !model.permissions_granted() {
-        *model.error_message_mut() = "permissions not granted".to_string();
+        *model.error_message_mut() = MaestroError::PermissionsNotGranted.to_string();
         return;
     }
     // Extract what we need from the agent before any mutable borrows
     let cmd = match model.agents().iter().find(|a| a.name == agent_name) {
         Some(a) => build_command(a),
         None => {
-            *model.error_message_mut() = "agent not found".to_string();
+            *model.error_message_mut() = MaestroError::AgentNotFound(agent_name).to_string();
             return;
         }
     };
@@ -442,12 +442,12 @@ pub fn spawn_agent_pane(
 
 pub fn focus_selected(model: &mut Model, selected_idx: usize) {
     if !model.permissions_granted() {
-        *model.error_message_mut() = "permissions not granted".to_string();
+        *model.error_message_mut() = MaestroError::PermissionsNotGranted.to_string();
         return;
     }
 
     if selected_idx >= model.agent_panes().len() {
-        *model.error_message_mut() = "no agent panes".to_string();
+        *model.error_message_mut() = MaestroError::NoAgentPanes.to_string();
         return;
     }
     let pane = &model.agent_panes()[selected_idx];
@@ -456,18 +456,18 @@ pub fn focus_selected(model: &mut Model, selected_idx: usize) {
         focus_terminal_pane(pid, false);
         model.error_message_mut().clear();
     } else {
-        *model.error_message_mut() = "Pane ID not available yet".to_string();
+        *model.error_message_mut() = MaestroError::PaneIdUnavailable.to_string();
     }
 }
 
 pub fn kill_selected(model: &mut Model, selected_idx: usize) {
     if !model.permissions_granted() {
-        *model.error_message_mut() = "permissions not granted".to_string();
+        *model.error_message_mut() = MaestroError::PermissionsNotGranted.to_string();
         return;
     }
 
     if selected_idx >= model.agent_panes().len() {
-        *model.error_message_mut() = "no agent panes".to_string();
+        *model.error_message_mut() = MaestroError::NoAgentPanes.to_string();
         return;
     }
     let pane = &model.agent_panes()[selected_idx];
@@ -477,7 +477,7 @@ pub fn kill_selected(model: &mut Model, selected_idx: usize) {
         model.error_message_mut().clear();
         model.clamp_selections();
     } else {
-        *model.error_message_mut() = "no valid target to kill".to_string();
+        *model.error_message_mut() = MaestroError::PaneIdUnavailable.to_string();
     }
 }
 
@@ -786,7 +786,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                     let agent_name = model.agents()[idx].name.clone();
                     if is_default_agent(&agent_name) {
                         *model.error_message_mut() =
-                            format!("Cannot delete default agent: {agent_name}");
+                            MaestroError::CannotDeleteDefaultAgent(agent_name).to_string();
                         *model.mode_mut() = Mode::View;
                         return;
                     }
@@ -854,7 +854,7 @@ fn start_agent_create(model: &mut Model) {
 
 fn start_agent_edit(model: &mut Model) {
     if model.agents().is_empty() {
-        *model.error_message_mut() = "no agents to edit".to_string();
+        *model.error_message_mut() = MaestroError::NoAgentsToEdit.to_string();
         return;
     }
     let idx = model
@@ -879,7 +879,7 @@ fn start_agent_edit(model: &mut Model) {
 
 fn start_agent_delete_confirm(model: &mut Model) {
     if model.agents().is_empty() {
-        *model.error_message_mut() = "no agents to delete".to_string();
+        *model.error_message_mut() = MaestroError::NoAgentsToDelete.to_string();
         return;
     }
     let idx = model

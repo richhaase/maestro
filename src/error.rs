@@ -17,6 +17,27 @@ pub enum MaestroError {
 
     #[error("Config error: {0}")]
     Config(#[from] anyhow::Error),
+
+    #[error("Permissions not granted")]
+    PermissionsNotGranted,
+
+    #[error("Agent not found: {0}")]
+    AgentNotFound(String),
+
+    #[error("No agent panes")]
+    NoAgentPanes,
+
+    #[error("Pane ID not available yet")]
+    PaneIdUnavailable,
+
+    #[error("No agents to edit")]
+    NoAgentsToEdit,
+
+    #[error("No agents to delete")]
+    NoAgentsToDelete,
+
+    #[error("Cannot delete default agent: {0}")]
+    CannotDeleteDefaultAgent(String),
 }
 
 pub type MaestroResult<T> = Result<T, MaestroError>;
@@ -27,20 +48,48 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = MaestroError::AgentNameRequired;
-        assert_eq!(err.to_string(), "Agent name required");
-
-        let err = MaestroError::DuplicateAgentName("test".to_string());
-        assert_eq!(err.to_string(), "Duplicate agent name: test");
-
-        let err = MaestroError::CommandRequired;
-        assert_eq!(err.to_string(), "Command required");
-
-        let err = MaestroError::NoAgentSelected;
-        assert_eq!(err.to_string(), "No agent selected");
-
-        let err = MaestroError::InvalidMode;
-        assert_eq!(err.to_string(), "Invalid mode");
+        assert_eq!(
+            MaestroError::AgentNameRequired.to_string(),
+            "Agent name required"
+        );
+        assert_eq!(
+            MaestroError::CommandRequired.to_string(),
+            "Command required"
+        );
+        assert_eq!(
+            MaestroError::DuplicateAgentName("test".to_string()).to_string(),
+            "Duplicate agent name: test"
+        );
+        assert_eq!(
+            MaestroError::NoAgentSelected.to_string(),
+            "No agent selected"
+        );
+        assert_eq!(MaestroError::InvalidMode.to_string(), "Invalid mode");
+        assert_eq!(
+            MaestroError::PermissionsNotGranted.to_string(),
+            "Permissions not granted"
+        );
+        assert_eq!(
+            MaestroError::AgentNotFound("claude".to_string()).to_string(),
+            "Agent not found: claude"
+        );
+        assert_eq!(MaestroError::NoAgentPanes.to_string(), "No agent panes");
+        assert_eq!(
+            MaestroError::PaneIdUnavailable.to_string(),
+            "Pane ID not available yet"
+        );
+        assert_eq!(
+            MaestroError::NoAgentsToEdit.to_string(),
+            "No agents to edit"
+        );
+        assert_eq!(
+            MaestroError::NoAgentsToDelete.to_string(),
+            "No agents to delete"
+        );
+        assert_eq!(
+            MaestroError::CannotDeleteDefaultAgent("claude".to_string()).to_string(),
+            "Cannot delete default agent: claude"
+        );
     }
 
     #[test]
