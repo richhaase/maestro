@@ -289,6 +289,16 @@ pub fn handle_session_update(model: &mut Model, sessions: Vec<SessionInfo>) {
         model.session_name = Some(new_session_name);
     }
 
+    // Keep tab_names in sync with the current session snapshot to avoid stale state
+    // between session updates and subsequent TabUpdate events.
+    if let Some(ref session_name) = model.session_name {
+        if let Some(session) = sessions.iter().find(|s| &s.name == session_name) {
+            let mut tabs = session.tabs.clone();
+            tabs.sort_by_key(|t| t.position);
+            model.tab_names = tabs.into_iter().map(|t| t.name).collect();
+        }
+    }
+
     rebuild_from_session_infos(model, &sessions);
 }
 
