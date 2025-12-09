@@ -212,11 +212,13 @@ All tests are unit tests. Missing coverage for:
 
 ---
 
-## 7. Documentation
+## 7. ~~Documentation~~ ✅ RESOLVED
 
-- No doc comments on public types or functions
-- Complex algorithms (e.g., `rebuild_from_session_infos`) have no inline documentation
-- `CLAUDE.md` serves as external documentation but isn't linked to code via `#![doc]`
+*Added doc comments on 2025-12-08:*
+- *Crate-level docs in `lib.rs`*
+- *Module-level docs in all modules*
+- *Doc comments on all public types, enums, structs, and functions*
+- *Removed non-essential inline comments that don't age well*
 
 ---
 
@@ -238,7 +240,7 @@ All tests are unit tests. Missing coverage for:
 | ~~Magic numbers~~ | ~~Extract to named constants~~ | ~~Readability~~ | ✅ Done |
 | ~~Hardcoded `/host`~~ | ~~Define constant~~ | ~~Maintainability~~ | ✅ Done |
 | ~~Test helpers~~ | ~~Extract to shared module~~ | ~~Test maintainability~~ | ✅ Done |
-| Documentation | Add doc comments to public API | Onboarding | |
+| ~~Documentation~~ | ~~Add doc comments to public API~~ | ~~Onboarding~~ | ✅ Done |
 
 ### Low Priority
 

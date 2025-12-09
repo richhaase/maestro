@@ -1,3 +1,6 @@
+//! Error types for user-facing operations.
+
+/// User-facing errors from Maestro operations.
 #[derive(Debug, thiserror::Error)]
 pub enum MaestroError {
     #[error("Agent name required")]
@@ -40,6 +43,7 @@ pub enum MaestroError {
     CannotDeleteDefaultAgent(String),
 }
 
+/// Result type for user-facing Maestro operations.
 pub type MaestroResult<T> = Result<T, MaestroError>;
 
 #[cfg(test)]

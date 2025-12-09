@@ -1,3 +1,5 @@
+//! UI rendering and mode definitions.
+
 use zellij_tile::ui_components::{serialize_table, Table, Text};
 
 use crate::agent::PaneStatus;
@@ -9,18 +11,27 @@ const COLOR_GREEN: usize = 2;
 const COLOR_RED: usize = 1;
 const MAX_SUGGESTIONS_DISPLAYED: usize = 5;
 
+/// The current UI mode/screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
+    /// Main view showing running agent panes.
     #[default]
     View,
+    /// Agent configuration list.
     AgentConfig,
+    /// Workspace path input for new pane wizard.
     NewPaneWorkspace,
+    /// Agent selection for new pane wizard.
     NewPaneAgentSelect,
+    /// Creating a new agent.
     AgentFormCreate,
+    /// Editing an existing agent.
     AgentFormEdit,
+    /// Confirming agent deletion.
     DeleteConfirm,
 }
 
+/// Form field currently focused in agent create/edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AgentFormField {
     #[default]
@@ -30,7 +41,7 @@ pub enum AgentFormField {
     Note,
 }
 
-/// Get the next field in the form navigation cycle
+/// Get the next field in the form navigation cycle.
 pub fn next_field(current: AgentFormField) -> AgentFormField {
     match current {
         AgentFormField::Name => AgentFormField::Command,
@@ -40,7 +51,7 @@ pub fn next_field(current: AgentFormField) -> AgentFormField {
     }
 }
 
-/// Get the previous field in the form navigation cycle
+/// Get the previous field in the form navigation cycle.
 pub fn prev_field(current: AgentFormField) -> AgentFormField {
     match current {
         AgentFormField::Name => AgentFormField::Note,
@@ -50,17 +61,19 @@ pub fn prev_field(current: AgentFormField) -> AgentFormField {
     }
 }
 
-/// Render the main UI
+/// Render the permissions denied screen.
 pub fn render_permissions_denied(rows: usize, cols: usize) -> String {
     format!(
         "Maestro: permissions denied.\nGrant the requested permissions and reload.\nViewport: {cols}x{rows}"
     )
 }
 
+/// Render the permissions request screen.
 pub fn render_permissions_requesting(rows: usize, cols: usize) -> String {
     format!("Maestro requesting permissions...\nViewport: {cols}x{rows}")
 }
 
+/// Render the complete UI based on current model state.
 pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
     let mut out = String::new();
 
@@ -204,7 +217,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                         } else {
                             " "
                         };
-                        let display_path = suggestion.strip_prefix(&host_prefix).unwrap_or(suggestion);
+                        let display_path =
+                            suggestion.strip_prefix(&host_prefix).unwrap_or(suggestion);
                         lines.push(format!(
                             "{} {}",
                             prefix,
@@ -224,7 +238,6 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
 
-            // Show filter input
             let filter = &model.wizard_agent_filter;
             if filter.is_empty() {
                 lines.push("Select agent (type to filter):".to_string());
@@ -232,9 +245,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 lines.push(format!("Filter: {}_", filter));
             }
 
-            // Get filtered agent indices
-            let filtered_indices =
-                crate::utils::filter_agents_fuzzy(&model.agents, filter);
+            let filtered_indices = crate::utils::filter_agents_fuzzy(&model.agents, filter);
 
             if filtered_indices.is_empty() {
                 lines.push("  (no matching agents)".to_string());

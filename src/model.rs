@@ -1,6 +1,9 @@
+//! Plugin state model.
+
 use crate::agent::{Agent, AgentPane};
 use crate::ui::{AgentFormField, Mode};
 
+/// The complete state of the Maestro plugin.
 #[derive(Debug, Default)]
 pub struct Model {
     pub permissions_granted: bool,
@@ -14,7 +17,6 @@ pub struct Model {
     pub workspace_input: String,
     pub custom_tab_name: Option<String>,
     pub session_name: Option<String>,
-    // Form state
     pub agent_name_input: String,
     pub agent_command_input: String,
     pub agent_args_input: String,
@@ -22,7 +24,6 @@ pub struct Model {
     pub agent_form_field: AgentFormField,
     pub form_target_agent: Option<usize>,
     pub agent_form_source: Option<Mode>,
-    // Selection state
     pub selected_pane: usize,
     pub selected_agent: usize,
     pub wizard_agent_idx: usize,
@@ -31,6 +32,7 @@ pub struct Model {
 }
 
 impl Model {
+    /// Ensure selection indices stay within valid bounds after list changes.
     pub fn clamp_selections(&mut self) {
         let pane_len = self.agent_panes.len();
         if pane_len == 0 {

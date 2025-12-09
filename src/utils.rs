@@ -1,3 +1,5 @@
+//! Utility functions for path handling and string manipulation.
+
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -5,6 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::agent::Agent;
 use crate::WASI_HOST_MOUNT;
 
+/// A directory entry from filesystem enumeration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirEntry {
     pub name: String,
@@ -12,9 +15,10 @@ pub struct DirEntry {
     pub is_directory: bool,
 }
 
-/// Read directory entries, filtering to directories only
+/// Read directory entries, filtering to directories only.
 pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>> {
-    let entries = fs::read_dir(path).with_context(|| format!("read directory: {}", path.display()))?;
+    let entries =
+        fs::read_dir(path).with_context(|| format!("read directory: {}", path.display()))?;
     let mut dirs = Vec::new();
 
     for entry in entries {
@@ -36,8 +40,7 @@ pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>> {
     Ok(dirs)
 }
 
-/// Get autocomplete suggestions for a partial path
-/// Returns directories that match the last segment of the path
+/// Get autocomplete suggestions for a partial path.
 pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
     use fuzzy_matcher::skim::SkimMatcherV2;
     use fuzzy_matcher::FuzzyMatcher;
@@ -94,7 +97,9 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
             if filter_segment.is_empty() {
                 true
             } else {
-                matcher.fuzzy_match(&entry.name, &filter_segment).is_some()
+                matcher
+                    .fuzzy_match(&entry.name, &filter_segment)
+                    .is_some()
                     || entry
                         .name
                         .to_lowercase()
@@ -119,7 +124,7 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
     suggestions
 }
 
-/// Truncate a string to a maximum length, adding ellipsis if needed
+/// Truncate a string to a maximum length, adding ellipsis if needed.
 pub fn truncate(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();
@@ -135,7 +140,7 @@ pub fn truncate(s: &str, max: usize) -> String {
     out
 }
 
-/// Build command as a list of strings (command followed by args)
+/// Build command as a list of strings (command followed by args).
 pub fn build_command(agent: &Agent) -> Vec<String> {
     let mut parts = vec![agent.command.clone()];
     if let Some(args) = &agent.args {
@@ -144,12 +149,12 @@ pub fn build_command(agent: &Agent) -> Vec<String> {
     parts
 }
 
-/// Extract the basename from a workspace path
+/// Extract the basename from a workspace path.
 pub fn workspace_basename(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-/// Generate a default tab name from a workspace path
+/// Generate a default tab name from a workspace path.
 pub fn default_tab_name(workspace_path: &str) -> String {
     let basename = workspace_basename(workspace_path);
     if basename.is_empty() {
@@ -159,7 +164,7 @@ pub fn default_tab_name(workspace_path: &str) -> String {
     }
 }
 
-/// Get the actual home directory path
+/// Get the actual home directory path.
 pub fn get_home_directory() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home);
@@ -168,7 +173,7 @@ pub fn get_home_directory() -> PathBuf {
 }
 
 /// Resolve a workspace path for Zellij API calls.
-/// Empty path returns None (Zellij will use default cwd).
+/// Returns `None` for empty paths (Zellij will use default cwd).
 pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -191,14 +196,13 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
 }
 
 /// Filter agents by fuzzy matching against the filter string.
-/// Returns indices of agents that match, sorted by match score (best first).
+/// Returns indices of matching agents sorted by score (best first).
 pub fn filter_agents_fuzzy(agents: &[Agent], filter: &str) -> Vec<usize> {
     use fuzzy_matcher::skim::SkimMatcherV2;
     use fuzzy_matcher::FuzzyMatcher;
 
     let filter = filter.trim();
     if filter.is_empty() {
-        // No filter - return all indices in original order
         return (0..agents.len()).collect();
     }
 
@@ -207,20 +211,18 @@ pub fn filter_agents_fuzzy(agents: &[Agent], filter: &str) -> Vec<usize> {
         .iter()
         .enumerate()
         .filter_map(|(idx, agent)| {
-            // Match against agent name
             matcher
                 .fuzzy_match(&agent.name, filter)
                 .map(|score| (idx, score))
         })
         .collect();
 
-    // Sort by score descending (best matches first)
     scored.sort_by(|a, b| b.1.cmp(&a.1));
 
     scored.into_iter().map(|(idx, _)| idx).collect()
 }
 
-/// Find an agent by matching the pane title to the agent's command
+/// Find an agent by matching the pane title to the agent's command.
 pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
     let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
 
@@ -311,7 +313,6 @@ mod tests {
             },
         ];
 
-        // Exact match on full command
         assert_eq!(
             find_agent_by_command(&agents, "cursor-agent"),
             Some(&agents[0])
@@ -322,7 +323,6 @@ mod tests {
             Some(&agents[2])
         );
 
-        // Strips " - suffix" before matching
         assert_eq!(
             find_agent_by_command(&agents, "cursor-agent - some suffix"),
             Some(&agents[0])
@@ -332,12 +332,10 @@ mod tests {
             Some(&agents[2])
         );
 
-        // No match for unknown commands or mismatched args
         assert_eq!(find_agent_by_command(&agents, "unknown"), None);
-        assert_eq!(find_agent_by_command(&agents, "my-cmd"), None); // missing arg1
-        assert_eq!(find_agent_by_command(&agents, "my-cmd arg1 arg2"), None); // extra arg
+        assert_eq!(find_agent_by_command(&agents, "my-cmd"), None);
+        assert_eq!(find_agent_by_command(&agents, "my-cmd arg1 arg2"), None);
 
-        // Agents with same base command but different args
         let agents_with_overlap = vec![
             Agent {
                 name: "codex".to_string(),
@@ -364,11 +362,9 @@ mod tests {
 
     #[test]
     fn test_resolve_workspace_path() {
-        // Empty path returns None
         assert_eq!(resolve_workspace_path(""), None);
         assert_eq!(resolve_workspace_path("   "), None);
 
-        // Relative paths returned as-is
         assert_eq!(
             resolve_workspace_path("src/maestro"),
             Some(PathBuf::from("src/maestro"))
@@ -378,13 +374,11 @@ mod tests {
             Some(PathBuf::from("projects/myapp"))
         );
 
-        // Whitespace is trimmed
         assert_eq!(
             resolve_workspace_path("  src/maestro  "),
             Some(PathBuf::from("src/maestro"))
         );
 
-        // Single directory
         assert_eq!(
             resolve_workspace_path("Documents"),
             Some(PathBuf::from("Documents"))

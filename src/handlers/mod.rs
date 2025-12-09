@@ -1,3 +1,5 @@
+//! Event handlers for Zellij plugin events.
+
 mod forms;
 mod keys;
 mod panes;

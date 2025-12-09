@@ -1,3 +1,5 @@
+//! Agent configuration and persistence.
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -6,33 +8,50 @@ use anyhow::{anyhow, bail, Context, Result};
 use kdl::{KdlDocument, KdlNode};
 use serde::{Deserialize, Serialize};
 
+/// An AI coding agent configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Agent {
+    /// Display name for the agent.
     pub name: String,
+    /// Command to run (e.g., "claude", "cursor-agent").
     pub command: String,
+    /// Optional command-line arguments.
     #[serde(default)]
     pub args: Option<Vec<String>>,
+    /// Optional description or notes.
     #[serde(default)]
     pub note: Option<String>,
 }
 
+/// Runtime status of an agent pane.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PaneStatus {
+    /// The pane is currently running.
     Running,
+    /// The pane has exited with an optional exit code.
     Exited(Option<i32>),
 }
 
+/// A running instance of an agent in a Zellij pane.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentPane {
+    /// Unique pane title (includes UUID for disambiguation).
     pub pane_title: String,
+    /// Name of the tab containing this pane.
     pub tab_name: String,
+    /// Tab index while waiting for tab name resolution.
     pub pending_tab_index: Option<usize>,
+    /// Zellij pane ID once assigned.
     pub pane_id: Option<u32>,
+    /// Working directory for the agent.
     pub workspace_path: String,
+    /// Name of the agent configuration.
     pub agent_name: String,
+    /// Current execution status.
     pub status: PaneStatus,
 }
 
+/// Load agents from a KDL configuration file.
 pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
     let data = match fs::read_to_string(path) {
         Ok(s) => s,
@@ -56,6 +75,7 @@ pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
     Ok(agents)
 }
 
+/// Save agents to a KDL configuration file.
 pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
     validate_agents(agents)?;
     let payload = agents_to_kdl(agents).context("serialize agents")?;
@@ -63,11 +83,13 @@ pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
     Ok(())
 }
 
+/// Get the default configuration file path (`~/.config/maestro/agents.kdl`).
 pub fn default_config_path() -> Result<PathBuf> {
     let base = config_base_dir()?;
     Ok(base.join("agents.kdl"))
 }
 
+/// Get the built-in default agents.
 pub fn default_agents() -> Vec<Agent> {
     vec![
         Agent {
@@ -97,10 +119,12 @@ pub fn default_agents() -> Vec<Agent> {
     ]
 }
 
+/// Check if an agent name is one of the built-in defaults.
 pub fn is_default_agent(name: &str) -> bool {
     matches!(name.trim(), "cursor" | "claude" | "gemini" | "codex")
 }
 
+/// Load agents, merging user config with built-in defaults.
 pub fn load_agents_default() -> Result<Vec<Agent>> {
     let path = default_config_path()?;
     let user_agents = load_agents(&path)?;
@@ -156,7 +180,6 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
         for child in children.nodes() {
             match child.name().value() {
                 "cmd" => {
-                    // First entry is the command, rest are args
                     let mut entries = child.entries().iter();
                     if let Some(first) = entries.next() {
                         command = first
@@ -224,7 +247,10 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
 }
 
 fn config_base_dir() -> Result<PathBuf> {
-    Ok(PathBuf::from(format!("{}/.config/maestro", crate::WASI_HOST_MOUNT)))
+    Ok(PathBuf::from(format!(
+        "{}/.config/maestro",
+        crate::WASI_HOST_MOUNT
+    )))
 }
 
 #[cfg(test)]
@@ -296,7 +322,6 @@ mod tests {
     fn test_load_nonexistent_file() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        // Delete the file so it doesn't exist
         std::fs::remove_file(path).unwrap();
 
         let agents = load_agents(path).unwrap();
@@ -365,7 +390,6 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
 
-        // Write invalid KDL with duplicate agent names
         let invalid_kdl = r#"
 agent name="duplicate" {
     cmd "cmd1"
@@ -383,7 +407,9 @@ agent name="duplicate" {
     fn test_default_config_path() {
         let path = default_config_path().unwrap();
         assert!(path.to_string_lossy().ends_with("agents.kdl"));
-        assert!(path.to_string_lossy().contains(&format!("{}/.config/maestro", crate::WASI_HOST_MOUNT)));
+        assert!(path
+            .to_string_lossy()
+            .contains(&format!("{}/.config/maestro", crate::WASI_HOST_MOUNT)));
     }
 
     #[test]
