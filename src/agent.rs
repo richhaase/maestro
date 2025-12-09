@@ -16,9 +16,9 @@ pub struct Agent {
     pub name: String,
     /// Command to run (e.g., "claude", "cursor-agent").
     pub command: String,
-    /// Optional command-line arguments.
-    #[serde(default)]
-    pub args: Option<Vec<String>>,
+    /// Command-line arguments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
     /// Optional description or notes.
     #[serde(default)]
     pub note: Option<String>,
@@ -105,25 +105,25 @@ pub fn default_agents() -> Vec<Agent> {
         Agent {
             name: "cursor".to_string(),
             command: "cursor-agent".to_string(),
-            args: None,
+            args: Vec::new(),
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "claude".to_string(),
             command: "claude".to_string(),
-            args: None,
+            args: Vec::new(),
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "gemini".to_string(),
             command: "gemini".to_string(),
-            args: None,
+            args: Vec::new(),
             note: Some("Default agent config".to_string()),
         },
         Agent {
             name: "codex".to_string(),
             command: "codex".to_string(),
-            args: None,
+            args: Vec::new(),
             note: Some("Default agent config".to_string()),
         },
     ]
@@ -222,7 +222,7 @@ fn agent_from_kdl(node: &KdlNode) -> MaestroResult<Agent> {
     Ok(Agent {
         name: name_val.to_string(),
         command,
-        args: if args.is_empty() { None } else { Some(args) },
+        args,
         note,
     })
 }
@@ -241,14 +241,12 @@ fn agents_to_kdl(agents: &[Agent]) -> String {
             cmd_node.push(agent.command.clone());
             children.nodes_mut().push(cmd_node);
         }
-        if let Some(args) = &agent.args {
-            if !args.is_empty() {
-                let mut args_node = KdlNode::new("args");
-                for arg in args {
-                    args_node.push(arg.clone());
-                }
-                children.nodes_mut().push(args_node);
+        if !agent.args.is_empty() {
+            let mut args_node = KdlNode::new("args");
+            for arg in &agent.args {
+                args_node.push(arg.clone());
             }
+            children.nodes_mut().push(args_node);
         }
         node.set_children(children);
         doc.nodes_mut().push(node);
@@ -274,13 +272,13 @@ mod tests {
             Agent {
                 name: "agent1".to_string(),
                 command: "echo".to_string(),
-                args: Some(vec!["hello".to_string()]),
+                args: vec!["hello".to_string()],
                 note: Some("Test agent".to_string()),
             },
             Agent {
                 name: "agent2".to_string(),
                 command: "ls".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
         ];
@@ -291,7 +289,7 @@ mod tests {
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].name, "agent1");
         assert_eq!(loaded[0].command, "echo");
-        assert_eq!(loaded[0].args, Some(vec!["hello".to_string()]));
+        assert_eq!(loaded[0].args, vec!["hello".to_string()]);
         assert_eq!(loaded[1].name, "agent2");
     }
 
@@ -311,13 +309,13 @@ mod tests {
             Agent {
                 name: "duplicate".to_string(),
                 command: "cmd1".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
             Agent {
                 name: "duplicate".to_string(),
                 command: "cmd2".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
         ];
@@ -343,7 +341,7 @@ mod tests {
         let agents = vec![Agent {
             name: "full_agent".to_string(),
             command: "cmd".to_string(),
-            args: Some(vec!["arg1".to_string(), "arg2".to_string()]),
+            args: vec!["arg1".to_string(), "arg2".to_string()],
             note: Some("A test agent with all fields".to_string()),
         }];
 
@@ -355,7 +353,7 @@ mod tests {
         assert_eq!(loaded[0].command, "cmd");
         assert_eq!(
             loaded[0].args,
-            Some(vec!["arg1".to_string(), "arg2".to_string()])
+            vec!["arg1".to_string(), "arg2".to_string()]
         );
         assert_eq!(
             loaded[0].note,
@@ -384,7 +382,7 @@ mod tests {
         let invalid_agents = vec![Agent {
             name: "".to_string(),
             command: "cmd".to_string(),
-            args: None,
+            args: Vec::new(),
             note: None,
         }];
 
@@ -450,13 +448,13 @@ agent name="duplicate" {
             Agent {
                 name: "custom".to_string(),
                 command: "custom-cmd".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
             Agent {
                 name: "cursor".to_string(),
                 command: "custom-cursor".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
         ];

@@ -27,7 +27,7 @@ pub mod test_helpers {
         Agent {
             name: name.to_string(),
             command: "echo".to_string(),
-            args: Some(vec![name.to_string()]),
+            args: vec![name.to_string()],
             note: None,
         }
     }

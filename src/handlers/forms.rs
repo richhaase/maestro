@@ -51,7 +51,7 @@ pub(super) fn start_agent_edit(model: &mut Model) {
     if let Some(agent) = model.agents.get(idx) {
         model.agent_form.name = agent.name.clone();
         model.agent_form.command = agent.command.clone();
-        model.agent_form.args = agent.args.as_ref().map(|a| a.join(" ")).unwrap_or_default();
+        model.agent_form.args = agent.args.join(" ");
         model.agent_form.note = agent.note.clone().unwrap_or_default();
         model.agent_form.field = AgentFormField::Name;
         model.agent_form.target = Some(idx);
@@ -81,17 +81,12 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     if command.is_empty() {
         return Err(MaestroError::CommandRequired);
     }
-    let args_input = model.agent_form.args.trim();
-    let args = if args_input.is_empty() {
-        None
-    } else {
-        Some(
-            args_input
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .collect(),
-        )
-    };
+    let args: Vec<String> = model
+        .agent_form
+        .args
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
     let note = if model.agent_form.note.trim().is_empty() {
         None
     } else {
@@ -249,10 +244,7 @@ mod tests {
         let agent = result.unwrap();
         assert_eq!(agent.name, "test-agent");
         assert_eq!(agent.command, "echo");
-        assert_eq!(
-            agent.args,
-            Some(vec!["hello".to_string(), "world".to_string()])
-        );
+        assert_eq!(agent.args, vec!["hello".to_string(), "world".to_string()]);
         assert_eq!(agent.note, Some("test note".to_string()));
     }
 
@@ -307,7 +299,7 @@ mod tests {
         assert_eq!(agent.command, "codex");
         assert_eq!(
             agent.args,
-            Some(vec!["/review".to_string(), "--verbose".to_string()])
+            vec!["/review".to_string(), "--verbose".to_string()]
         );
     }
 
@@ -322,7 +314,7 @@ mod tests {
         assert!(result.is_ok());
         let agent = result.unwrap();
         assert_eq!(agent.command, "echo");
-        assert_eq!(agent.args, None);
+        assert!(agent.args.is_empty());
     }
 
     #[test]

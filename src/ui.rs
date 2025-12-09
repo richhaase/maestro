@@ -141,10 +141,10 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         } else {
             &agent.name
         };
-        let command_full = if let Some(args) = &agent.args {
-            format!("{} {}", agent.command, args.join(" "))
-        } else {
+        let command_full = if agent.args.is_empty() {
             agent.command.clone()
+        } else {
+            format!("{} {}", agent.command, agent.args.join(" "))
         };
         let command = truncate(&command_full, command_col_width);
 

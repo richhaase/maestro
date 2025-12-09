@@ -139,9 +139,7 @@ pub fn truncate(s: &str, max: usize) -> String {
 /// Build command as a list of strings (command followed by args).
 pub fn build_command(agent: &Agent) -> Vec<String> {
     let mut parts = vec![agent.command.clone()];
-    if let Some(args) = &agent.args {
-        parts.extend(args.clone());
-    }
+    parts.extend(agent.args.clone());
     parts
 }
 
@@ -249,7 +247,7 @@ mod tests {
         let agent = Agent {
             name: "test".to_string(),
             command: "echo".to_string(),
-            args: Some(vec!["hello".to_string(), "world".to_string()]),
+            args: vec!["hello".to_string(), "world".to_string()],
             note: None,
         };
 
@@ -262,7 +260,7 @@ mod tests {
         let agent = Agent {
             name: "test".to_string(),
             command: "echo".to_string(),
-            args: None,
+            args: Vec::new(),
             note: None,
         };
 
@@ -292,19 +290,19 @@ mod tests {
             Agent {
                 name: "cursor".to_string(),
                 command: "cursor-agent".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
             Agent {
                 name: "claude".to_string(),
                 command: "claude".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
             Agent {
                 name: "custom".to_string(),
                 command: "my-cmd".to_string(),
-                args: Some(vec!["arg1".to_string()]),
+                args: vec!["arg1".to_string()],
                 note: None,
             },
         ];
@@ -336,13 +334,13 @@ mod tests {
             Agent {
                 name: "codex".to_string(),
                 command: "codex".to_string(),
-                args: None,
+                args: Vec::new(),
                 note: None,
             },
             Agent {
                 name: "codex-reviewer".to_string(),
                 command: "codex".to_string(),
-                args: Some(vec!["/review".to_string()]),
+                args: vec!["/review".to_string()],
                 note: None,
             },
         ];

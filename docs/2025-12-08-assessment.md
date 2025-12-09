@@ -16,7 +16,7 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 |----------|-------|--------|--------|
 | High | ~~Dual error systems~~ | ~~Confusion, maintenance burden~~ | **RESOLVED** |
 | High | ~~God object Model~~ | ~~Harder to test, extend~~ | **RESOLVED** |
-| Medium | Option<Vec> pattern | Boilerplate everywhere | Open |
+| Medium | ~~Option<Vec> pattern~~ | ~~Boilerplate everywhere~~ | **RESOLVED** |
 | Medium | Clone-heavy code | Performance, readability | Open |
 | Medium | Empty string sentinels | Null-safety issues | Open |
 | Low | Missing #[must_use] | Silent bugs possible | Open |
@@ -62,25 +62,20 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 
 ## Medium Priority Issues
 
-### 3. `Option<Vec<T>>` Anti-Pattern
+### 3. ~~`Option<Vec<T>>` Anti-Pattern~~ - RESOLVED
 
-**Location**: `agent.rs:19-20`
+**Status**: Fixed on 2025-12-08
 
-```rust
-pub args: Option<Vec<String>>,
-```
+**Changes Made**:
+- Changed `args: Option<Vec<String>>` to `args: Vec<String>` in `Agent` struct
+- Added `#[serde(default, skip_serializing_if = "Vec::is_empty")]` for clean serialization
+- Updated all usage sites to use the simpler `Vec` API directly
+- Simplified `build_command()` to use `parts.extend(agent.args.clone())`
+- Simplified `agents_to_kdl()` to check `!agent.args.is_empty()` directly
+- Updated UI rendering in `ui.rs` to use `agent.args.is_empty()`
+- Updated form handling in `handlers/forms.rs` to use `agent.args.join(" ")`
 
-This is non-idiomatic. An empty `Vec` is semantically equivalent to `None` here but simpler to work with. Every usage site must handle the `Option`:
-
-```rust
-// Current - verbose
-if let Some(args) = &agent.args { parts.extend(args.clone()); }
-
-// Idiomatic - simpler
-parts.extend(agent.args.clone());
-```
-
-**Recommendation**: Use `Vec<String>` with `#[serde(default, skip_serializing_if = "Vec::is_empty")]`.
+**Result**: Cleaner code without `Option` boilerplate. All 46 tests pass.
 
 ---
 
@@ -368,7 +363,7 @@ The code is functional but would benefit from a refactoring pass focused on:
 1. **Unify error handling**: Standardize on `MaestroError` throughout
 2. **Break up Model struct**: Extract form state, wizard state into sub-structs
 3. **Apply consistent Rust idioms**:
-   - Replace `Option<Vec<T>>` with `Vec<T>`
+   - ~~Replace `Option<Vec<T>>` with `Vec<T>`~~ ✓
    - Replace empty string sentinels with `Option<String>`
    - Add `#[must_use]` to pure functions
    - Move free functions to impl blocks where appropriate
