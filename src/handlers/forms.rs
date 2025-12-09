@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use zellij_tile::prelude::{BareKey, KeyWithModifier};
 
 use crate::agent::{default_config_path, is_default_agent, save_agents, Agent};
@@ -100,7 +98,7 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     })
 }
 
-pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
+pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<()> {
     if model.agents.iter().any(|a| a.name == agent.name) {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
@@ -109,7 +107,7 @@ pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResu
     persist_agents(model)
 }
 
-pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
+pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<()> {
     if let Some(idx) = model.agent_form.target {
         if idx < model.agents.len() {
             if model
@@ -128,7 +126,7 @@ pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult
     Err(MaestroError::NoAgentSelected)
 }
 
-pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
+pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<()> {
     let path = default_config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| MaestroError::DirectoryCreate {
@@ -146,7 +144,7 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
     model.agents = crate::agent::load_agents_default()?;
     model.clamp_selections();
     model.error_message.clear();
-    Ok(path)
+    Ok(())
 }
 
 #[cfg(test)]

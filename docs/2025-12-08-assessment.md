@@ -150,15 +150,15 @@ This drops ALL modified keys including potentially useful ones like `Shift+Tab` 
 
 ---
 
-### 10. Inconsistent Return Types
+### 10. ~~Inconsistent Return Types~~ - RESOLVED
 
-**Location**: `handlers/forms.rs`
+**Status**: Fixed on 2025-12-08
 
-```rust
-pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf>
-```
+**Changes Made**:
+- Changed `apply_agent_create`, `apply_agent_edit`, and `persist_agents` to return `MaestroResult<()>`
+- Removed unused `PathBuf` return value and import
 
-Why does creating an agent return a `PathBuf`? The caller never uses it. This should return `MaestroResult<()>` or the created agent.
+**Result**: Functions now return `()` on success since callers don't use the path. All 49 tests pass.
 
 ---
 
