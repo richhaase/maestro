@@ -20,6 +20,7 @@ pub fn handle_permission_result(model: &mut Model, status: PermissionStatus) {
 }
 
 pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
+    let previous_tab_names = model.tab_names.clone();
     tabs.sort_by_key(|t| t.position);
     let tab_names: Vec<String> = tabs.iter().map(|t| t.name.clone()).collect();
 
@@ -31,6 +32,13 @@ pub fn apply_tab_update(model: &mut Model, mut tabs: Vec<TabInfo>) {
                 // Only update if we don't have a valid tab name yet
                 if pane.tab_name.is_empty() || !tab_names.contains(&pane.tab_name) {
                     pane.tab_name = name.clone();
+                }
+            }
+        } else if !pane.tab_name.is_empty() && !tab_names.contains(&pane.tab_name) {
+            // Tab was likely renamed; preserve the tab slot by position from the previous snapshot
+            if let Some(prev_idx) = previous_tab_names.iter().position(|n| n == &pane.tab_name) {
+                if let Some(new_name) = tab_names.get(prev_idx) {
+                    pane.tab_name = new_name.clone();
                 }
             }
         }
@@ -361,5 +369,25 @@ mod tests {
 
         assert_eq!(model.session_name.as_deref(), Some("s"));
         assert_eq!(model.tab_names, vec!["one".to_string(), "two".to_string()]);
+    }
+
+    #[test]
+    fn apply_tab_update_renames_tracked_panes() {
+        let mut model = Model::default();
+        model.tab_names = vec!["old".to_string()];
+        model.agent_panes.push(AgentPane {
+            pane_title: "title".to_string(),
+            tab_name: "old".to_string(),
+            pending_tab_index: None,
+            pane_id: Some(1),
+            workspace_path: String::new(),
+            agent_name: String::new(),
+            status: PaneStatus::Running,
+        });
+
+        apply_tab_update(&mut model, vec![make_tab("renamed", 0)]);
+
+        assert_eq!(model.agent_panes.len(), 1);
+        assert_eq!(model.agent_panes[0].tab_name, "renamed");
     }
 }
