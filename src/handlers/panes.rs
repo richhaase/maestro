@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 
-use crate::agent::{AgentPane, PaneStatus};
 use crate::error::MaestroError;
 use crate::model::Model;
 use crate::utils::{build_command, workspace_basename};
@@ -100,15 +99,6 @@ pub fn spawn_agent_pane(
     }
     open_command_pane(command_to_run, ctx);
 
-    model.agent_panes.push(AgentPane {
-        pane_title: title,
-        tab_name: tab_target,
-        pending_tab_index: None,
-        pane_id: None,
-        workspace_path,
-        agent_name,
-        status: PaneStatus::Running,
-    });
     model.error_message.clear();
     model.pane_wizard.clear();
 }

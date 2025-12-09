@@ -171,6 +171,7 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                 spawn_agent_pane(model, workspace, agent, tab_choice);
                 if model.error_message.is_empty() {
                     view_preserve_messages(model);
+                    close_self();
                 }
             }
         }
