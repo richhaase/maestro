@@ -45,7 +45,9 @@ pub(super) fn start_agent_edit(model: &mut Model) {
         model.error_message = MaestroError::NoAgentsToEdit.to_string();
         return;
     }
-    let idx = model.selected_agent.min(model.agents.len().saturating_sub(1));
+    let idx = model
+        .selected_agent
+        .min(model.agents.len().saturating_sub(1));
     if let Some(agent) = model.agents.get(idx) {
         model.agent_form.name = agent.name.clone();
         model.agent_form.command = agent.command.clone();
@@ -64,7 +66,9 @@ pub(super) fn start_agent_delete_confirm(model: &mut Model) {
         model.error_message = MaestroError::NoAgentsToDelete.to_string();
         return;
     }
-    let idx = model.selected_agent.min(model.agents.len().saturating_sub(1));
+    let idx = model
+        .selected_agent
+        .min(model.agents.len().saturating_sub(1));
     model.agent_form.target = Some(idx);
     model.mode = Mode::DeleteConfirm;
     model.error_message.clear();

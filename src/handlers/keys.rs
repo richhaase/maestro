@@ -10,7 +10,9 @@ use super::forms::{
     handle_text_edit, persist_agents, start_agent_create, start_agent_delete_confirm,
     start_agent_edit, start_new_pane_workspace,
 };
-use super::panes::{derive_tab_name_from_workspace, focus_selected, kill_selected, spawn_agent_pane, TabChoice};
+use super::panes::{
+    derive_tab_name_from_workspace, focus_selected, kill_selected, spawn_agent_pane, TabChoice,
+};
 
 pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
     match model.mode {

@@ -412,10 +412,7 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "full_agent");
         assert_eq!(loaded[0].command, "cmd");
-        assert_eq!(
-            loaded[0].args,
-            vec!["arg1".to_string(), "arg2".to_string()]
-        );
+        assert_eq!(loaded[0].args, vec!["arg1".to_string(), "arg2".to_string()]);
         assert_eq!(
             loaded[0].note,
             Some("A test agent with all fields".to_string())

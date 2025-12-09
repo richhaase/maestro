@@ -93,9 +93,7 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
             if filter_segment.is_empty() {
                 true
             } else {
-                matcher
-                    .fuzzy_match(&entry.name, &filter_segment)
-                    .is_some()
+                matcher.fuzzy_match(&entry.name, &filter_segment).is_some()
                     || entry
                         .name
                         .to_lowercase()
