@@ -83,12 +83,8 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     if command.is_empty() {
         return Err(MaestroError::CommandRequired);
     }
-    let args: Vec<String> = model
-        .agent_form
-        .args
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    let args = shell_words::split(&model.agent_form.args)
+        .map_err(|e| MaestroError::InvalidAgentConfig(e.to_string()))?;
     let note = if model.agent_form.note.trim().is_empty() {
         None
     } else {
@@ -297,6 +293,27 @@ mod tests {
         assert_eq!(
             agent.args,
             vec!["/review".to_string(), "--verbose".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_build_agent_from_inputs_quoted_args() {
+        let mut model = create_test_model();
+        model.agent_form.name = "test-agent".to_string();
+        model.agent_form.command = "codex".to_string();
+        model.agent_form.args = r#"/review --prompt "hello world" file\ name"#.to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(
+            agent.args,
+            vec![
+                "/review".to_string(),
+                "--prompt".to_string(),
+                "hello world".to_string(),
+                "file name".to_string()
+            ]
         );
     }
 
