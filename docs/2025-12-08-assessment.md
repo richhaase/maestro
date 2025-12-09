@@ -119,18 +119,18 @@ Some errors bypass the type system entirely:
 
 ## 3. UX Issues
 
-### 3.1 Inconsistent Key Bindings
+### 3.1 ~~Inconsistent Key Bindings~~ ✅ RESOLVED
+
+*Standardized on arrow keys only (removed j/k from all modes) and added fzf-style filtering to agent selection on 2025-12-08.*
 
 | Mode | Up | Down | Back |
 |------|-----|------|------|
-| View | `k` / `Up` | `j` / `Down` | `Esc` |
-| AgentConfig | `k` / `Up` | `j` / `Down` | `Esc` |
-| **NewPaneWorkspace** | `Up` only | `Down` only | `Esc` |
-| NewPaneAgentSelect | `k` / `Up` | `j` / `Down` | `Esc` |
+| View | `Up` | `Down` | `Esc` |
+| AgentConfig | `Up` | `Down` | `Esc` |
+| NewPaneWorkspace | `Up` | `Down` | `Esc` |
+| NewPaneAgentSelect | `Up` | `Down` | `Esc` |
 
-**Problem**: `NewPaneWorkspace` mode (`handlers.rs:647-690`) doesn't support `j`/`k` navigation while all other modes do. This breaks muscle memory and feels inconsistent.
-
-**Recommendation**: Add `j`/`k` bindings to `NewPaneWorkspace` mode.
+NewPaneAgentSelect now supports typing to filter agents (fzf-style fuzzy matching).
 
 ### 3.2 Limited Text Input
 
@@ -288,7 +288,7 @@ All tests are unit tests. Missing coverage for:
 
 | Issue | Action | Impact | Status |
 |-------|--------|--------|--------|
-| Inconsistent `j`/`k` bindings | Add to `NewPaneWorkspace` mode | UX consistency | |
+| ~~Inconsistent key bindings~~ | ~~Standardize on arrows, add fzf filter~~ | ~~UX consistency~~ | ✅ Done |
 | Mixed error handling | Standardize on `MaestroError` | Maintainability | |
 | Handler bloat | Split `handlers.rs` into modules | Code organization | |
 | ~~Dead code~~ | ~~Remove unused items~~ | ~~Clarity~~ | ✅ Done |

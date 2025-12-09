@@ -583,10 +583,10 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
     }
 
     match key.bare_key {
-        BareKey::Char('j') | BareKey::Down => {
+        BareKey::Down => {
             move_pane_selection(model, 1);
         }
-        BareKey::Char('k') | BareKey::Up => {
+        BareKey::Up => {
             move_pane_selection(model, -1);
         }
         BareKey::Enter => {
@@ -618,10 +618,10 @@ fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
     }
 
     match key.bare_key {
-        BareKey::Char('j') | BareKey::Down => {
+        BareKey::Down => {
             move_agent_selection(model, 1);
         }
-        BareKey::Char('k') | BareKey::Up => {
+        BareKey::Up => {
             move_agent_selection(model, -1);
         }
         BareKey::Char('a') => {
@@ -691,27 +691,32 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
 }
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
-    if !key.key_modifiers.is_empty() {
+    // Handle text input for filtering
+    if handle_text_edit(model.wizard_agent_filter_mut(), &key) {
+        // Reset selection when filter changes
+        *model.wizard_agent_idx_mut() = 0;
         return;
     }
 
-    let agent_count = model.agents().len();
+    let filtered_indices =
+        crate::utils::filter_agents_fuzzy(model.agents(), model.wizard_agent_filter());
+    let filtered_count = filtered_indices.len();
 
     match key.bare_key {
-        BareKey::Char('j') | BareKey::Down => {
-            if agent_count > 0 && model.wizard_agent_idx() + 1 < agent_count {
+        BareKey::Down => {
+            if filtered_count > 0 && model.wizard_agent_idx() + 1 < filtered_count {
                 *model.wizard_agent_idx_mut() = model.wizard_agent_idx() + 1;
             }
         }
-        BareKey::Char('k') | BareKey::Up => {
+        BareKey::Up => {
             if model.wizard_agent_idx() > 0 {
                 *model.wizard_agent_idx_mut() = model.wizard_agent_idx() - 1;
             }
         }
         BareKey::Enter => {
-            let idx = model.wizard_agent_idx();
-            if idx < agent_count {
-                let agent = model.agents()[idx].name.clone();
+            let selection_idx = model.wizard_agent_idx();
+            if let Some(&agent_idx) = filtered_indices.get(selection_idx) {
+                let agent = model.agents()[agent_idx].name.clone();
                 let workspace = model.workspace_input().trim().to_string();
                 let tab_name = model
                     .custom_tab_name()

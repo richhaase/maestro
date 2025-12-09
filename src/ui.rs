@@ -223,19 +223,35 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         }
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
-            lines.push("New Agent Pane: select agent".to_string());
 
-            for (idx, agent) in model.agents().iter().enumerate() {
-                let prefix = if idx == model.wizard_agent_idx() {
-                    ">"
-                } else {
-                    " "
-                };
-                lines.push(format!(
-                    "{} {}",
-                    prefix,
-                    truncate(&agent.name, cols.saturating_sub(2))
-                ));
+            // Show filter input
+            let filter = model.wizard_agent_filter();
+            if filter.is_empty() {
+                lines.push("Select agent (type to filter):".to_string());
+            } else {
+                lines.push(format!("Filter: {}_", filter));
+            }
+
+            // Get filtered agent indices
+            let filtered_indices =
+                crate::utils::filter_agents_fuzzy(model.agents(), filter);
+
+            if filtered_indices.is_empty() {
+                lines.push("  (no matching agents)".to_string());
+            } else {
+                for (display_idx, &agent_idx) in filtered_indices.iter().enumerate() {
+                    let prefix = if display_idx == model.wizard_agent_idx() {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    let agent = &model.agents()[agent_idx];
+                    lines.push(format!(
+                        "{} {}",
+                        prefix,
+                        truncate(&agent.name, cols.saturating_sub(2))
+                    ));
+                }
             }
 
             Some(lines.join("\n"))
@@ -302,10 +318,10 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
 
 fn render_status(model: &Model, cols: usize) -> String {
     let hints = match model.mode() {
-        Mode::View => "j/k move • Enter focus • d kill • n new • c config • Esc close",
-        Mode::AgentConfig => "j/k move • a add • e edit • d delete • Esc back",
-        Mode::NewPaneWorkspace => "[↑/↓] select • Enter continue • Esc cancel",
-        Mode::NewPaneAgentSelect => "j/k move • Enter select • Esc cancel",
+        Mode::View => "↑/↓ move • Enter focus • d kill • n new • c config • Esc close",
+        Mode::AgentConfig => "↑/↓ move • a add • e edit • d delete • Esc back",
+        Mode::NewPaneWorkspace => "↑/↓ select • Enter continue • Esc cancel",
+        Mode::NewPaneAgentSelect => "type to filter • ↑/↓ move • Enter select • Esc cancel",
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };

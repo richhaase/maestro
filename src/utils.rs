@@ -191,6 +191,36 @@ pub fn resolve_workspace_path(path: &str) -> Option<PathBuf> {
     }
 }
 
+/// Filter agents by fuzzy matching against the filter string.
+/// Returns indices of agents that match, sorted by match score (best first).
+pub fn filter_agents_fuzzy(agents: &[Agent], filter: &str) -> Vec<usize> {
+    use fuzzy_matcher::skim::SkimMatcherV2;
+    use fuzzy_matcher::FuzzyMatcher;
+
+    let filter = filter.trim();
+    if filter.is_empty() {
+        // No filter - return all indices in original order
+        return (0..agents.len()).collect();
+    }
+
+    let matcher = SkimMatcherV2::default();
+    let mut scored: Vec<(usize, i64)> = agents
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, agent)| {
+            // Match against agent name
+            matcher
+                .fuzzy_match(&agent.name, filter)
+                .map(|score| (idx, score))
+        })
+        .collect();
+
+    // Sort by score descending (best matches first)
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    scored.into_iter().map(|(idx, _)| idx).collect()
+}
+
 /// Find an agent by matching the pane title to the agent's command
 pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Option<&'a Agent> {
     let title_base = pane_title.split(" - ").next().unwrap_or(pane_title).trim();
