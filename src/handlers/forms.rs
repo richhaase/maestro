@@ -12,7 +12,7 @@ pub(super) fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bo
             true
         }
         BareKey::Delete => {
-            target.clear();
+            target.pop();
             true
         }
         BareKey::Char(c) => {
@@ -199,7 +199,7 @@ mod tests {
         let mut target = "hello".to_string();
         let key = delete_key();
         assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "");
+        assert_eq!(target, "hell");
     }
 
     #[test]
