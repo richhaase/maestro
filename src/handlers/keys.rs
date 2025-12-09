@@ -235,7 +235,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                     model.selected_agent = model
                         .selected_agent
                         .min(model.agents.len().saturating_sub(1));
-                    match persist_agents(model) {
+                    match persist_agents(model, None) {
                         Ok(_) => {
                             model.error_message.clear();
                         }

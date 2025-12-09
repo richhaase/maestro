@@ -98,13 +98,20 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
     })
 }
 
+fn set_selection_by_name(model: &mut Model, name: &str) {
+    if let Some(pos) = model.agents.iter().position(|a| a.name == name) {
+        model.selected_agent = pos;
+    } else {
+        model.clamp_selections();
+    }
+}
+
 pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<()> {
     if model.agents.iter().any(|a| a.name == agent.name) {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
     model.agents.push(agent.clone());
-    model.selected_agent = model.agents.len().saturating_sub(1);
-    persist_agents(model)
+    persist_agents(model, Some(&agent.name))
 }
 
 pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<()> {
@@ -118,15 +125,14 @@ pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult
             {
                 return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
-            model.agents[idx] = agent;
-            model.selected_agent = idx;
-            return persist_agents(model);
+            model.agents[idx] = agent.clone();
+            return persist_agents(model, Some(&agent.name));
         }
     }
     Err(MaestroError::NoAgentSelected)
 }
 
-pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<()> {
+pub(super) fn persist_agents(model: &mut Model, focus_name: Option<&str>) -> MaestroResult<()> {
     let path = default_config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| MaestroError::DirectoryCreate {
@@ -137,7 +143,11 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<()> {
     // Persist full agent list so user customizations to built-in defaults are retained.
     save_agents(&path, &model.agents)?;
     model.agents = crate::agent::load_agents_default()?;
-    model.clamp_selections();
+    if let Some(name) = focus_name {
+        set_selection_by_name(model, name);
+    } else {
+        model.clamp_selections();
+    }
     model.error_message.clear();
     Ok(())
 }
@@ -369,5 +379,18 @@ mod tests {
             result.unwrap_err(),
             MaestroError::DuplicateAgentName(_)
         ));
+    }
+
+    #[test]
+    fn persist_agents_keeps_selection_by_name() {
+        let mut model = create_test_model();
+        model.agents.push(create_test_agent("delta"));
+        model.agents.push(create_test_agent("bravo"));
+        model.agents.push(create_test_agent("alpha"));
+        model.agents.sort_by(|a, b| a.name.cmp(&b.name));
+        model.selected_agent = 2; // arbitrary starting index
+
+        set_selection_by_name(&mut model, "alpha");
+        assert_eq!(model.agents[model.selected_agent].name, "alpha");
     }
 }
