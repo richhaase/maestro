@@ -58,7 +58,8 @@ pub fn spawn_agent_pane(
     let tab_name = match &tab_choice {
         TabChoice::Existing(name) => name.clone(),
         TabChoice::New => model
-            .custom_tab_name
+            .pane_wizard
+            .tab_name
             .as_ref()
             .filter(|s| !s.trim().is_empty())
             .cloned()
@@ -109,8 +110,7 @@ pub fn spawn_agent_pane(
         status: PaneStatus::Running,
     });
     model.error_message.clear();
-    model.custom_tab_name = None;
-    model.wizard_agent_filter = String::new();
+    model.pane_wizard.clear();
 }
 
 pub fn focus_selected(model: &mut Model, selected_idx: usize) {

@@ -92,43 +92,43 @@ fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
 }
 
 fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) {
-    if handle_text_edit(&mut model.workspace_input, &key) {
-        model.browse_selected_idx = 0;
+    if handle_text_edit(&mut model.pane_wizard.workspace, &key) {
+        model.pane_wizard.browse_idx = 0;
         return;
     }
 
-    let input = model.workspace_input.clone();
+    let input = model.pane_wizard.workspace.clone();
     let suggestions = crate::utils::get_path_suggestions(&input);
 
     match key.bare_key {
         BareKey::Up => {
-            if model.browse_selected_idx > 0 {
-                model.browse_selected_idx -= 1;
+            if model.pane_wizard.browse_idx > 0 {
+                model.pane_wizard.browse_idx -= 1;
             }
         }
         BareKey::Down => {
             let max_idx = suggestions.len().saturating_sub(1);
-            if model.browse_selected_idx < max_idx {
-                model.browse_selected_idx += 1;
+            if model.pane_wizard.browse_idx < max_idx {
+                model.pane_wizard.browse_idx += 1;
             }
         }
         BareKey::Tab => {
-            if let Some(suggestion) = suggestions.get(model.browse_selected_idx) {
-                model.workspace_input = suggestion.clone();
-                model.browse_selected_idx = 0;
+            if let Some(suggestion) = suggestions.get(model.pane_wizard.browse_idx) {
+                model.pane_wizard.workspace = suggestion.clone();
+                model.pane_wizard.browse_idx = 0;
             }
         }
         BareKey::Enter => {
-            if let Some(selected) = suggestions.get(model.browse_selected_idx) {
-                model.workspace_input = selected.clone();
+            if let Some(selected) = suggestions.get(model.pane_wizard.browse_idx) {
+                model.pane_wizard.workspace = selected.clone();
             }
             // Always use workspace path as tab name - skip tab selection step
-            let tab_name = derive_tab_name_from_workspace(&model.workspace_input)
-                .unwrap_or_else(|| crate::utils::default_tab_name(&model.workspace_input));
-            model.custom_tab_name = Some(tab_name);
+            let tab_name = derive_tab_name_from_workspace(&model.pane_wizard.workspace)
+                .unwrap_or_else(|| crate::utils::default_tab_name(&model.pane_wizard.workspace));
+            model.pane_wizard.tab_name = Some(tab_name);
             model.mode = Mode::NewPaneAgentSelect;
-            model.wizard_agent_filter = String::new();
-            model.wizard_agent_idx = 0;
+            model.pane_wizard.agent_filter = String::new();
+            model.pane_wizard.agent_idx = 0;
             reset_status(model);
         }
         BareKey::Esc => cancel_to_view(model),
@@ -138,34 +138,35 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
     // Handle text input for filtering
-    if handle_text_edit(&mut model.wizard_agent_filter, &key) {
+    if handle_text_edit(&mut model.pane_wizard.agent_filter, &key) {
         // Reset selection when filter changes
-        model.wizard_agent_idx = 0;
+        model.pane_wizard.agent_idx = 0;
         return;
     }
 
     let filtered_indices =
-        crate::utils::filter_agents_fuzzy(&model.agents, &model.wizard_agent_filter);
+        crate::utils::filter_agents_fuzzy(&model.agents, &model.pane_wizard.agent_filter);
     let filtered_count = filtered_indices.len();
 
     match key.bare_key {
         BareKey::Down => {
-            if filtered_count > 0 && model.wizard_agent_idx + 1 < filtered_count {
-                model.wizard_agent_idx += 1;
+            if filtered_count > 0 && model.pane_wizard.agent_idx + 1 < filtered_count {
+                model.pane_wizard.agent_idx += 1;
             }
         }
         BareKey::Up => {
-            if model.wizard_agent_idx > 0 {
-                model.wizard_agent_idx -= 1;
+            if model.pane_wizard.agent_idx > 0 {
+                model.pane_wizard.agent_idx -= 1;
             }
         }
         BareKey::Enter => {
-            let selection_idx = model.wizard_agent_idx;
+            let selection_idx = model.pane_wizard.agent_idx;
             if let Some(&agent_idx) = filtered_indices.get(selection_idx) {
                 let agent = model.agents[agent_idx].name.clone();
-                let workspace = model.workspace_input.trim().to_string();
+                let workspace = model.pane_wizard.workspace.trim().to_string();
                 let tab_name = model
-                    .custom_tab_name
+                    .pane_wizard
+                    .tab_name
                     .clone()
                     .unwrap_or_else(|| crate::utils::default_tab_name(&workspace));
                 let tab_choice = if model.tab_names.contains(&tab_name) {
@@ -191,10 +192,10 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
     let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
     match key.bare_key {
         BareKey::Tab if shift_tab => {
-            model.agent_form_field = prev_field(model.agent_form_field);
+            model.agent_form.field = prev_field(model.agent_form.field);
         }
         BareKey::Tab => {
-            model.agent_form_field = next_field(model.agent_form_field);
+            model.agent_form.field = next_field(model.agent_form.field);
         }
         BareKey::Enter => match build_agent_from_inputs(model) {
             Ok(agent) => {
@@ -217,7 +218,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
             }
         },
         BareKey::Esc => {
-            model.agent_form_source = None;
+            model.agent_form.source = None;
             cancel_to_view(model);
         }
         _ => {}
@@ -227,7 +228,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
 fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
     match key.bare_key {
         BareKey::Enter | BareKey::Char('y') | BareKey::Char('Y') => {
-            if let Some(idx) = model.form_target_agent.take() {
+            if let Some(idx) = model.agent_form.target.take() {
                 if idx < model.agents.len() {
                     let agent_name = model.agents[idx].name.clone();
                     if is_default_agent(&agent_name) {
@@ -266,9 +267,7 @@ fn reset_status(model: &mut Model) {
 
 fn cancel_to_view(model: &mut Model) {
     model.mode = Mode::View;
-    model.quick_launch_agent_name = None;
-    model.custom_tab_name = None;
-    model.wizard_agent_filter = String::new();
+    model.pane_wizard.clear();
     reset_status(model);
 }
 

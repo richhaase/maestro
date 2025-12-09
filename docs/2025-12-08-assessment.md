@@ -15,7 +15,7 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 | Priority | Issue | Impact | Status |
 |----------|-------|--------|--------|
 | High | ~~Dual error systems~~ | ~~Confusion, maintenance burden~~ | **RESOLVED** |
-| High | God object Model | Harder to test, extend | Open |
+| High | ~~God object Model~~ | ~~Harder to test, extend~~ | **RESOLVED** |
 | Medium | Option<Vec> pattern | Boilerplate everywhere | Open |
 | Medium | Clone-heavy code | Performance, readability | Open |
 | Medium | Empty string sentinels | Null-safety issues | Open |
@@ -45,34 +45,18 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 
 ---
 
-### 2. God Object Model
+### 2. ~~God Object Model~~ - RESOLVED
 
-**Location**: `model.rs:8-32`
+**Status**: Fixed on 2025-12-08
 
-The `Model` struct has 18+ fields covering at least 4 distinct concerns:
+**Changes Made**:
+- Extracted `AgentForm` sub-struct (7 fields: `name`, `command`, `args`, `note`, `field`, `target`, `source`)
+- Extracted `PaneWizard` sub-struct (6 fields: `workspace`, `browse_idx`, `agent_filter`, `agent_idx`, `tab_name`, `quick_launch_agent`)
+- Added helper methods: `AgentForm::clear()`, `AgentForm::current_input_mut()`, `PaneWizard::clear()`
+- Model now has 11 core fields + 2 sub-structs (down from 24 flat fields)
+- Updated `handlers/forms.rs`, `handlers/keys.rs`, `handlers/panes.rs`, `ui.rs`
 
-```rust
-pub struct Model {
-    // Permissions (2 fields)
-    // Agent/Pane data (4 fields)
-    // UI selections (4 fields)
-    // Form inputs (6 fields)
-    // Wizard state (4+ fields)
-}
-```
-
-This violates single responsibility. Form state could be encapsulated:
-
-```rust
-pub struct AgentForm {
-    name: String,
-    command: String,
-    args: String,
-    note: String,
-    focused_field: AgentFormField,
-    target_idx: Option<usize>,
-}
-```
+**Result**: Model struct is now organized with clear separation of concerns. All 46 tests pass.
 
 ---
 

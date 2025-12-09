@@ -3,6 +3,50 @@
 use crate::agent::{Agent, AgentPane};
 use crate::ui::{AgentFormField, Mode};
 
+/// State for the agent create/edit form.
+#[derive(Debug, Default, Clone)]
+pub struct AgentForm {
+    pub name: String,
+    pub command: String,
+    pub args: String,
+    pub note: String,
+    pub field: AgentFormField,
+    pub target: Option<usize>,
+    pub source: Option<Mode>,
+}
+
+impl AgentForm {
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn current_input_mut(&mut self) -> &mut String {
+        match self.field {
+            AgentFormField::Name => &mut self.name,
+            AgentFormField::Command => &mut self.command,
+            AgentFormField::Args => &mut self.args,
+            AgentFormField::Note => &mut self.note,
+        }
+    }
+}
+
+/// State for the new pane wizard flow.
+#[derive(Debug, Default, Clone)]
+pub struct PaneWizard {
+    pub workspace: String,
+    pub browse_idx: usize,
+    pub agent_filter: String,
+    pub agent_idx: usize,
+    pub tab_name: Option<String>,
+    pub quick_launch_agent: Option<String>,
+}
+
+impl PaneWizard {
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
 /// The complete state of the Maestro plugin.
 #[derive(Debug, Default)]
 pub struct Model {
@@ -11,24 +55,13 @@ pub struct Model {
     pub agents: Vec<Agent>,
     pub agent_panes: Vec<AgentPane>,
     pub tab_names: Vec<String>,
-    pub error_message: String,
-    pub mode: Mode,
-    pub quick_launch_agent_name: Option<String>,
-    pub workspace_input: String,
-    pub custom_tab_name: Option<String>,
     pub session_name: Option<String>,
-    pub agent_name_input: String,
-    pub agent_command_input: String,
-    pub agent_args_input: String,
-    pub agent_note_input: String,
-    pub agent_form_field: AgentFormField,
-    pub form_target_agent: Option<usize>,
-    pub agent_form_source: Option<Mode>,
+    pub mode: Mode,
+    pub error_message: String,
     pub selected_pane: usize,
     pub selected_agent: usize,
-    pub wizard_agent_idx: usize,
-    pub wizard_agent_filter: String,
-    pub browse_selected_idx: usize,
+    pub agent_form: AgentForm,
+    pub pane_wizard: PaneWizard,
 }
 
 impl Model {

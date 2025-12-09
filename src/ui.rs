@@ -187,7 +187,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         }
         Mode::NewPaneWorkspace => {
             let mut lines = Vec::new();
-            let input = &model.workspace_input;
+            let input = &model.pane_wizard.workspace;
             let host_prefix = format!("{}/", WASI_HOST_MOUNT);
             let display_input = input.strip_prefix(&host_prefix).unwrap_or(input);
             lines.push("New Agent Pane: workspace path".to_string());
@@ -201,10 +201,10 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 if !suggestions.is_empty() {
                     lines.push("".to_string());
                     let max_display = MAX_SUGGESTIONS_DISPLAYED;
-                    let start_idx = if model.browse_selected_idx < max_display {
+                    let start_idx = if model.pane_wizard.browse_idx < max_display {
                         0
                     } else {
-                        model.browse_selected_idx.saturating_sub(max_display - 1)
+                        model.pane_wizard.browse_idx.saturating_sub(max_display - 1)
                     };
                     let end_idx = (start_idx + max_display).min(suggestions.len());
 
@@ -212,7 +212,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                         suggestions[start_idx..end_idx].iter().enumerate()
                     {
                         let actual_idx = start_idx + display_idx;
-                        let prefix = if actual_idx == model.browse_selected_idx {
+                        let prefix = if actual_idx == model.pane_wizard.browse_idx {
                             ">"
                         } else {
                             " "
@@ -238,7 +238,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
 
-            let filter = &model.wizard_agent_filter;
+            let filter = &model.pane_wizard.agent_filter;
             if filter.is_empty() {
                 lines.push("Select agent (type to filter):".to_string());
             } else {
@@ -251,7 +251,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 lines.push("  (no matching agents)".to_string());
             } else {
                 for (display_idx, &agent_idx) in filtered_indices.iter().enumerate() {
-                    let prefix = if display_idx == model.wizard_agent_idx {
+                    let prefix = if display_idx == model.pane_wizard.agent_idx {
                         ">"
                     } else {
                         " "
@@ -279,7 +279,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         )),
         Mode::DeleteConfirm => {
             let name = model
-                .form_target_agent
+                .agent_form
+                .target
                 .and_then(|idx| model.agents.get(idx))
                 .map(|a| a.name.as_str())
                 .unwrap_or("(unknown)");
@@ -302,27 +303,27 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
     };
     lines.push(mk(
         "Name",
-        &model.agent_name_input,
+        &model.agent_form.name,
         AgentFormField::Name,
-        model.agent_form_field,
+        model.agent_form.field,
     ));
     lines.push(mk(
         "Command",
-        &model.agent_command_input,
+        &model.agent_form.command,
         AgentFormField::Command,
-        model.agent_form_field,
+        model.agent_form.field,
     ));
     lines.push(mk(
         "Args",
-        &model.agent_args_input,
+        &model.agent_form.args,
         AgentFormField::Args,
-        model.agent_form_field,
+        model.agent_form.field,
     ));
     lines.push(mk(
         "Note",
-        &model.agent_note_input,
+        &model.agent_form.note,
         AgentFormField::Note,
-        model.agent_form_field,
+        model.agent_form.field,
     ));
     lines.join("\n")
 }
