@@ -2,7 +2,7 @@
 name = "maestro"
 version = "0.2.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 description = "Maestro Zellij plugin (ground-up, Zellij-only)"
 readme = "README.md"
 
