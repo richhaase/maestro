@@ -18,7 +18,7 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 | High | ~~God object Model~~ | ~~Harder to test, extend~~ | **RESOLVED** |
 | Medium | ~~Option<Vec> pattern~~ | ~~Boilerplate everywhere~~ | **RESOLVED** |
 | Medium | ~~Clone-heavy code~~ | ~~Performance, readability~~ | **RESOLVED** |
-| Medium | Empty string sentinels | Null-safety issues | Open |
+| Medium | ~~Empty string sentinels~~ | ~~Null-safety issues~~ | **WON'T FIX** |
 | Low | Missing #[must_use] | Silent bugs possible | Open |
 | Low | Scattered constants | Organization | Open |
 | Low | Fuzzy matcher recreation | Minor performance | Open |
@@ -112,26 +112,14 @@ Selection indices have inconsistent naming:
 
 ---
 
-### 7. Empty String as Sentinel Value
+### 7. ~~Empty String as Sentinel Value~~ - WON'T FIX
 
-**Location**: Multiple files
+**Rationale**: The empty string pattern is appropriate here:
+- `error_message`: Frequently set/cleared; `String` with `.clear()` is ergonomic
+- `workspace_path`: Empty string is valid (current directory)
+- Form fields: Mutable text inputs where empty is a valid state
 
-Empty strings are used to mean "not set":
-
-```rust
-pub tab_name: String,       // Empty means unresolved
-pub workspace_path: String, // Empty means unspecified
-pub error_message: String,  // Empty means no error
-```
-
-More idiomatic:
-
-```rust
-pub tab_name: Option<String>,
-pub error_message: Option<String>,
-```
-
-This makes the intent explicit and enables `is_some()` checks rather than `!s.is_empty()`.
+Using `Option<String>` would add `Some()` boilerplate without meaningful safety benefit.
 
 ---
 
@@ -349,7 +337,7 @@ The code is functional but would benefit from a refactoring pass focused on:
 2. **Break up Model struct**: Extract form state, wizard state into sub-structs
 3. **Apply consistent Rust idioms**:
    - ~~Replace `Option<Vec<T>>` with `Vec<T>`~~ ✓
-   - Replace empty string sentinels with `Option<String>`
+   - ~~Replace empty string sentinels with `Option<String>`~~ (won't fix - pattern is appropriate here)
    - Add `#[must_use]` to pure functions
    - Move free functions to impl blocks where appropriate
 4. **Clean up API surfaces**:
