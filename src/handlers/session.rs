@@ -309,3 +309,57 @@ pub fn handle_pane_closed(model: &mut Model, pane_id: PaneId) {
     model.agent_panes.retain(|p| p.pane_id != Some(pid));
     model.clamp_selections();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn make_tab(name: &str, position: usize) -> TabInfo {
+        TabInfo {
+            position,
+            name: name.to_string(),
+            active: position == 0,
+            panes_to_hide: 0,
+            is_fullscreen_active: false,
+            is_sync_panes_active: false,
+            are_floating_panes_visible: false,
+            other_focused_clients: Vec::new(),
+            active_swap_layout_name: None,
+            is_swap_layout_dirty: false,
+            viewport_rows: 0,
+            viewport_columns: 0,
+            display_area_rows: 0,
+            display_area_columns: 0,
+            selectable_tiled_panes_count: 0,
+            selectable_floating_panes_count: 0,
+        }
+    }
+
+    fn make_session(name: &str, tabs: Vec<TabInfo>, is_current: bool) -> SessionInfo {
+        SessionInfo {
+            name: name.to_string(),
+            tabs,
+            panes: PaneManifest::default(),
+            connected_clients: 0,
+            is_current_session: is_current,
+            available_layouts: Vec::new(),
+            plugins: BTreeMap::new(),
+            web_clients_allowed: false,
+            web_client_count: 0,
+            tab_history: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn tab_names_hydrate_on_session_update() {
+        let tabs = vec![make_tab("two", 1), make_tab("one", 0)];
+        let session = make_session("s", tabs, true);
+        let mut model = Model::default();
+
+        handle_session_update(&mut model, vec![session]);
+
+        assert_eq!(model.session_name.as_deref(), Some("s"));
+        assert_eq!(model.tab_names, vec!["one".to_string(), "two".to_string()]);
+    }
+}
