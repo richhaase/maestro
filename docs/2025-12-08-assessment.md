@@ -79,19 +79,16 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 
 ---
 
-### 4. Inconsistent Naming Conventions
+### 4. ~~Inconsistent Naming Conventions~~ - RESOLVED
 
-Selection indices have inconsistent naming:
+**Status**: Addressed by God object refactoring on 2025-12-08
 
-| Field | Pattern |
-|-------|---------|
-| `selected_pane` | `selected_X` |
-| `selected_agent` | `selected_X` |
-| `browse_selected_idx` | `X_selected_idx` |
-| `wizard_agent_idx` | `wizard_X_idx` |
-| `form_target_agent` | `form_target_X` |
+The original inconsistency (`browse_selected_idx`, `wizard_agent_idx`, `form_target_agent`) was resolved when fields were grouped into sub-structs:
+- `Model`: `selected_pane`, `selected_agent` (persistent view selections)
+- `PaneWizard`: `browse_idx`, `agent_idx` (wizard flow positions)
+- `AgentForm`: `target` (edit target index)
 
-**Recommendation**: Pick one pattern and apply it consistently. Suggest `selected_X` for current selections.
+The naming now reflects semantic distinctions: "selected" for persistent selections, simple `_idx` for transient flow state.
 
 ---
 
