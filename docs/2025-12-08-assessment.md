@@ -17,7 +17,7 @@ This is a well-structured Zellij plugin with reasonable separation of concerns. 
 | High | ~~Dual error systems~~ | ~~Confusion, maintenance burden~~ | **RESOLVED** |
 | High | ~~God object Model~~ | ~~Harder to test, extend~~ | **RESOLVED** |
 | Medium | ~~Option<Vec> pattern~~ | ~~Boilerplate everywhere~~ | **RESOLVED** |
-| Medium | Clone-heavy code | Performance, readability | Open |
+| Medium | ~~Clone-heavy code~~ | ~~Performance, readability~~ | **RESOLVED** |
 | Medium | Empty string sentinels | Null-safety issues | Open |
 | Low | Missing #[must_use] | Silent bugs possible | Open |
 | Low | Scattered constants | Organization | Open |
@@ -95,35 +95,20 @@ Selection indices have inconsistent naming:
 
 ---
 
-### 5. Clone-Heavy Patterns
+### 5. ~~Clone-Heavy Patterns~~ - RESOLVED
 
-**Location**: `handlers/panes.rs:33-113`
+**Status**: Fixed on 2025-12-08
 
-`spawn_agent_pane` clones excessively:
+**Changes Made**:
+- Use references (`&agent_name`, `&workspace_label`) instead of cloning for `title_label`
+- Move `title` into `AgentPane` instead of cloning
+- Move `tab_target` into `AgentPane` instead of cloning
+- Use `into_owned()` instead of `to_string()` for `Cow<str>` conversions
+- Use `into_iter().next()` instead of `first().cloned()` to avoid clone
+- Simplified match arm to move `TabChoice::Existing(name)` directly
+- Removed stale comment about mutable borrow gymnastics
 
-```rust
-let agent = model.agents[agent_idx].name.clone();  // Line 165
-let workspace = model.workspace_input.trim().to_string();  // Line 166
-let tab_name = model.custom_tab_name.clone()...  // Line 167-170
-```
-
-Many of these could be moved rather than cloned, or the function signature could take ownership where appropriate.
-
----
-
-### 6. Mutable Borrow Gymnastics
-
-**Location**: `handlers/panes.rs:43-50`
-
-```rust
-// Extract what we need from the agent before any mutable borrows
-let cmd = match model.agents.iter().find(|a| a.name == agent_name) {
-    Some(a) => build_command(a),
-    None => { ... }
-};
-```
-
-This comment reveals API friction. The function takes `&mut Model` but only needs mutable access at the end. Consider splitting the function or restructuring the data access.
+**Result**: Reduced unnecessary allocations in `spawn_agent_pane`. All 46 tests pass.
 
 ---
 

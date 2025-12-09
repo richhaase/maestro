@@ -40,7 +40,7 @@ pub fn spawn_agent_pane(
         model.error_message = MaestroError::PermissionsNotGranted.to_string();
         return;
     }
-    // Extract what we need from the agent before any mutable borrows
+
     let cmd = match model.agents.iter().find(|a| a.name == agent_name) {
         Some(a) => build_command(a),
         None => {
@@ -48,44 +48,44 @@ pub fn spawn_agent_pane(
             return;
         }
     };
+
     let workspace_label = workspace_basename(&workspace_path);
     let title_label = if workspace_label.is_empty() {
-        agent_name.clone()
+        &agent_name
     } else {
-        workspace_label
+        &workspace_label
     };
     let title = format!("{}:{}", title_label, Uuid::new_v4());
-    let tab_name = match &tab_choice {
-        TabChoice::Existing(name) => name.clone(),
-        TabChoice::New => model
-            .pane_wizard
-            .tab_name
-            .as_ref()
-            .filter(|s| !s.trim().is_empty())
-            .cloned()
-            .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path)),
-    };
 
     let resolved_workspace = crate::utils::resolve_workspace_path(&workspace_path);
 
-    let (tab_target, _is_new_tab) = match tab_choice {
-        TabChoice::Existing(name) => (name, false),
+    let tab_target = match tab_choice {
+        TabChoice::Existing(name) => name,
         TabChoice::New => {
+            let name = model
+                .pane_wizard
+                .tab_name
+                .as_ref()
+                .filter(|s| !s.trim().is_empty())
+                .cloned()
+                .unwrap_or_else(|| crate::utils::default_tab_name(&workspace_path));
             let cwd_for_tab = resolved_workspace
                 .as_ref()
-                .map(|p| p.to_string_lossy().to_string());
-            new_tab(Some(tab_name.clone()), cwd_for_tab);
-            if !model.tab_names.contains(&tab_name) {
-                model.tab_names.push(tab_name.clone());
+                .map(|p| p.to_string_lossy().into_owned());
+            new_tab(Some(name.clone()), cwd_for_tab);
+            if !model.tab_names.contains(&name) {
+                model.tab_names.push(name.clone());
             }
-            (tab_name, true)
+            name
         }
     };
+
     go_to_tab_name(&tab_target);
+
     let mut ctx = BTreeMap::new();
     ctx.insert("pane_title".to_string(), title.clone());
     if let Some(ref resolved) = resolved_workspace {
-        ctx.insert("cwd".to_string(), resolved.to_string_lossy().to_string());
+        ctx.insert("cwd".to_string(), resolved.to_string_lossy().into_owned());
     }
     ctx.insert("agent".to_string(), agent_name.clone());
     ctx.insert("tab_name".to_string(), tab_target.clone());
@@ -93,7 +93,7 @@ pub fn spawn_agent_pane(
     let mut command_to_run = if cmd.len() > 1 {
         CommandToRun::new_with_args(cmd[0].clone(), cmd[1..].to_vec())
     } else {
-        CommandToRun::new(cmd.first().cloned().unwrap_or_default())
+        CommandToRun::new(cmd.into_iter().next().unwrap_or_default())
     };
     if let Some(ref resolved) = resolved_workspace {
         command_to_run.cwd = Some(resolved.clone());
@@ -101,7 +101,7 @@ pub fn spawn_agent_pane(
     open_command_pane(command_to_run, ctx);
 
     model.agent_panes.push(AgentPane {
-        pane_title: title.clone(),
+        pane_title: title,
         tab_name: tab_target,
         pending_tab_index: None,
         pane_id: None,
