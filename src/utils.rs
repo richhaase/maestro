@@ -46,37 +46,37 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
         return Vec::new();
     }
 
-    let home = get_home_directory();
+    let root = wasi_root();
     let host_prefix = format!("{}/", WASI_HOST_MOUNT);
 
     let (base_path, filter_segment) = if trimmed == WASI_HOST_MOUNT || trimmed == host_prefix {
-        (home.clone(), String::new())
+        (root.clone(), String::new())
     } else if trimmed.starts_with(&host_prefix) {
         let relative = trimmed.strip_prefix(&host_prefix).unwrap_or("");
         if relative.is_empty() {
-            (home.clone(), String::new())
+            (root.clone(), String::new())
         } else if relative.ends_with('/') {
-            (home.join(relative.trim_end_matches('/')), String::new())
+            (root.join(relative.trim_end_matches('/')), String::new())
         } else {
             let parts: Vec<&str> = relative.split('/').collect();
             if parts.len() == 1 {
-                (home.clone(), parts[0].to_string())
+                (root.clone(), parts[0].to_string())
             } else {
                 let base = parts[..parts.len() - 1].join("/");
                 let filter = parts.last().unwrap_or(&"").to_string();
-                (home.join(base), filter)
+                (root.join(base), filter)
             }
         }
     } else if trimmed.ends_with('/') {
-        (home.join(trimmed.trim_end_matches('/')), String::new())
+        (root.join(trimmed.trim_end_matches('/')), String::new())
     } else {
         let parts: Vec<&str> = trimmed.split('/').collect();
         if parts.len() == 1 {
-            (home.clone(), parts[0].to_string())
+            (root.clone(), parts[0].to_string())
         } else {
             let base = parts[..parts.len() - 1].join("/");
             let filter = parts.last().unwrap_or(&"").to_string();
-            (home.join(base), filter)
+            (root.join(base), filter)
         }
     };
 
@@ -98,8 +98,8 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
                 matcher.fuzzy_match(name, &filter_segment)?
             };
 
-            let relative = if entry.path.starts_with(&home) {
-                entry.path.strip_prefix(&home).unwrap_or(&entry.path)
+            let relative = if entry.path.starts_with(&root) {
+                entry.path.strip_prefix(&root).unwrap_or(&entry.path)
             } else {
                 &entry.path
             };
@@ -156,11 +156,9 @@ pub fn default_tab_name(workspace_path: &str) -> String {
     }
 }
 
-/// Get the actual home directory path.
-pub fn get_home_directory() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home);
-    }
+/// Get the WASI host mount point (the root of accessible filesystem).
+/// In WASI, `/host` maps to the cwd the user launched Zellij with.
+fn wasi_root() -> PathBuf {
     PathBuf::from(WASI_HOST_MOUNT)
 }
 
@@ -231,8 +229,6 @@ pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Optio
 mod tests {
     use super::*;
     use crate::agent::Agent;
-    use std::fs;
-    use tempfile::tempdir;
 
     #[test]
     fn test_truncate() {
@@ -376,45 +372,6 @@ mod tests {
         assert_eq!(
             resolve_workspace_path("Documents"),
             Some(PathBuf::from("Documents"))
-        );
-    }
-
-    #[test]
-    fn test_get_path_suggestions_sorted_by_score() {
-        let temp = tempdir().unwrap();
-        let base = temp.path();
-        // Create directories that share the same prefix to exercise ordering.
-        let entries = ["src", "scripts", "docs"];
-        for entry in &entries {
-            fs::create_dir_all(base.join(entry)).unwrap();
-        }
-
-        // Override HOME so the helper uses our temp dir.
-        std::env::set_var("HOME", base);
-
-        // With filter "sc", "scripts" should rank above "src" when fuzzy matched.
-        let suggestions = get_path_suggestions("sc");
-        let joined = suggestions.join(",");
-        assert!(
-            joined.contains("/src"),
-            "expected src path in suggestions: {joined}"
-        );
-        assert!(
-            joined.contains("/scripts"),
-            "expected scripts path in suggestions: {joined}"
-        );
-
-        let idx_scripts = suggestions
-            .iter()
-            .position(|s| s.ends_with("/scripts"))
-            .unwrap();
-        let idx_src = suggestions
-            .iter()
-            .position(|s| s.ends_with("/src"))
-            .unwrap();
-        assert!(
-            idx_scripts < idx_src,
-            "scripts should come before src when filtering 'sc': {suggestions:?}"
         );
     }
 }

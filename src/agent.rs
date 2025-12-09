@@ -143,18 +143,13 @@ pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
     let user_agents = load_agents(&path)?;
 
     let mut merged = default_agents();
-    let default_names: std::collections::BTreeSet<String> =
-        merged.iter().map(|a| a.name.to_lowercase()).collect();
 
     for user_agent in user_agents {
-        let user_name_normalized = user_agent.name.to_lowercase();
-        if default_names.contains(&user_name_normalized) {
-            if let Some(pos) = merged
-                .iter()
-                .position(|a| a.name.to_lowercase() == user_name_normalized)
-            {
-                merged[pos] = user_agent;
-            }
+        if let Some(pos) = merged
+            .iter()
+            .position(|a| names_match(&a.name, &user_agent.name))
+        {
+            merged[pos] = user_agent;
         } else {
             merged.push(user_agent);
         }
@@ -165,6 +160,12 @@ pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
 }
 
 const MAX_AGENT_NAME_LENGTH: usize = 64;
+
+/// Compare two agent names for equality, ignoring case.
+/// This is the canonical comparison used throughout the codebase.
+pub fn names_match(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
 
 fn validate_agent_name(name: &str) -> MaestroResult<()> {
     if name.chars().any(|c| c.is_control()) {

@@ -202,7 +202,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
                 };
                 match result {
                     Ok(_) => {
-                        view_preserve_messages(model);
+                        model.mode = Mode::AgentConfig;
                     }
                     Err(err) => {
                         model.error_message = err.to_string();
@@ -214,7 +214,9 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
             }
         },
         BareKey::Esc => {
-            cancel_to_view(model);
+            model.agent_form.clear();
+            model.mode = Mode::AgentConfig;
+            model.error_message.clear();
         }
         _ => {}
     }
@@ -229,7 +231,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                     if is_default_agent(&agent_name) {
                         model.error_message =
                             MaestroError::CannotDeleteDefaultAgent(agent_name).to_string();
-                        model.mode = Mode::View;
+                        model.mode = Mode::AgentConfig;
                         return;
                     }
                     model.agents.remove(idx);
@@ -247,10 +249,10 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                 }
             }
 
-            model.mode = Mode::View;
+            model.mode = Mode::AgentConfig;
         }
         BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => {
-            model.mode = Mode::View;
+            model.mode = Mode::AgentConfig;
         }
         _ => {}
     }

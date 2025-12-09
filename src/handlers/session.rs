@@ -373,8 +373,10 @@ mod tests {
 
     #[test]
     fn apply_tab_update_renames_tracked_panes() {
-        let mut model = Model::default();
-        model.tab_names = vec!["old".to_string()];
+        let mut model = Model {
+            tab_names: vec!["old".to_string()],
+            ..Default::default()
+        };
         model.agent_panes.push(AgentPane {
             pane_title: "title".to_string(),
             tab_name: "old".to_string(),

@@ -1,6 +1,6 @@
 use zellij_tile::prelude::{BareKey, KeyWithModifier};
 
-use crate::agent::{default_config_path, save_agents, Agent};
+use crate::agent::{default_config_path, names_match, save_agents, Agent};
 use crate::error::{MaestroError, MaestroResult};
 use crate::model::Model;
 use crate::ui::{AgentFormField, Mode};
@@ -8,10 +8,6 @@ use crate::ui::{AgentFormField, Mode};
 pub(super) fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bool {
     match key.bare_key {
         BareKey::Backspace => {
-            target.pop();
-            true
-        }
-        BareKey::Delete => {
             target.pop();
             true
         }
@@ -97,12 +93,7 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
 }
 
 fn set_selection_by_name(model: &mut Model, name: &str) {
-    let target = name.to_lowercase();
-    if let Some(pos) = model
-        .agents
-        .iter()
-        .position(|a| a.name.to_lowercase() == target)
-    {
+    if let Some(pos) = model.agents.iter().position(|a| names_match(&a.name, name)) {
         model.selected_agent = pos;
     } else {
         model.clamp_selections();
@@ -110,11 +101,10 @@ fn set_selection_by_name(model: &mut Model, name: &str) {
 }
 
 pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<()> {
-    let new_name = agent.name.to_lowercase();
     if model
         .agents
         .iter()
-        .any(|a| a.name.to_lowercase() == new_name)
+        .any(|a| names_match(&a.name, &agent.name))
     {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
@@ -125,12 +115,11 @@ pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResu
 pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<()> {
     if let Some(idx) = model.agent_form.target {
         if idx < model.agents.len() {
-            let new_name = agent.name.to_lowercase();
             if model
                 .agents
                 .iter()
                 .enumerate()
-                .any(|(i, a)| i != idx && a.name.to_lowercase() == new_name)
+                .any(|(i, a)| i != idx && names_match(&a.name, &agent.name))
             {
                 return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
@@ -186,13 +175,6 @@ mod tests {
         }
     }
 
-    fn delete_key() -> KeyWithModifier {
-        KeyWithModifier {
-            bare_key: BareKey::Delete,
-            key_modifiers: std::collections::BTreeSet::new(),
-        }
-    }
-
     #[test]
     fn test_handle_text_edit_char() {
         let mut target = String::new();
@@ -205,14 +187,6 @@ mod tests {
     fn test_handle_text_edit_backspace() {
         let mut target = "hello".to_string();
         let key = backspace_key();
-        assert!(handle_text_edit(&mut target, &key));
-        assert_eq!(target, "hell");
-    }
-
-    #[test]
-    fn test_handle_text_edit_delete() {
-        let mut target = "hello".to_string();
-        let key = delete_key();
         assert!(handle_text_edit(&mut target, &key));
         assert_eq!(target, "hell");
     }
