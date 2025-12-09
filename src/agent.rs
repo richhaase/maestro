@@ -131,7 +131,10 @@ pub fn default_agents() -> Vec<Agent> {
 
 /// Check if an agent name is one of the built-in defaults.
 pub fn is_default_agent(name: &str) -> bool {
-    matches!(name.trim(), "cursor" | "claude" | "gemini" | "codex")
+    matches!(
+        name.trim().to_lowercase().as_str(),
+        "cursor" | "claude" | "gemini" | "codex"
+    )
 }
 
 /// Load agents, merging user config with built-in defaults.
@@ -140,12 +143,18 @@ pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
     let user_agents = load_agents(&path)?;
 
     let mut merged = default_agents();
-    let default_names: std::collections::BTreeSet<String> =
-        merged.iter().map(|a| a.name.clone()).collect();
+    let default_names: std::collections::BTreeSet<String> = merged
+        .iter()
+        .map(|a| a.name.to_lowercase())
+        .collect();
 
     for user_agent in user_agents {
-        if default_names.contains(&user_agent.name) {
-            if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
+        let user_name_normalized = user_agent.name.to_lowercase();
+        if default_names.contains(&user_name_normalized) {
+            if let Some(pos) = merged
+                .iter()
+                .position(|a| a.name.to_lowercase() == user_name_normalized)
+            {
                 merged[pos] = user_agent;
             }
         } else {
@@ -185,7 +194,8 @@ fn validate_agents(agents: &[Agent]) -> MaestroResult<()> {
         if agent.command.trim().is_empty() {
             return Err(MaestroError::CommandRequired);
         }
-        if !seen.insert(name.to_string()) {
+        let normalized = name.to_lowercase();
+        if !seen.insert(normalized) {
             return Err(MaestroError::DuplicateAgentName(name.to_string()));
         }
     }
@@ -342,6 +352,31 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_agents_duplicate_names_case_insensitive() {
+        let agents = vec![
+            Agent {
+                name: "Duplicate".to_string(),
+                command: "cmd1".to_string(),
+                args: Vec::new(),
+                note: None,
+            },
+            Agent {
+                name: "duplicate".to_string(),
+                command: "cmd2".to_string(),
+                args: Vec::new(),
+                note: None,
+            },
+        ];
+
+        let result = validate_agents(&agents);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::DuplicateAgentName(_)
+        ));
+    }
+
+    #[test]
     fn test_validate_agent_name_control_chars() {
         let agents = vec![Agent {
             name: "test\nagent".to_string(),
@@ -495,6 +530,7 @@ agent name="duplicate" {
         assert!(!is_default_agent("custom"));
         assert!(!is_default_agent(""));
         assert!(is_default_agent("  cursor  "));
+        assert!(is_default_agent("CODEx"));
     }
 
     #[test]
@@ -510,7 +546,7 @@ agent name="duplicate" {
                 note: None,
             },
             Agent {
-                name: "cursor".to_string(),
+                name: "Cursor".to_string(),
                 command: "custom-cursor".to_string(),
                 args: Vec::new(),
                 note: None,
@@ -524,12 +560,18 @@ agent name="duplicate" {
 
         let defaults = default_agents();
         let mut merged = defaults.clone();
-        let default_names: std::collections::BTreeSet<String> =
-            merged.iter().map(|a| a.name.clone()).collect();
+        let default_names: std::collections::BTreeSet<String> = merged
+            .iter()
+            .map(|a| a.name.to_lowercase())
+            .collect();
 
         for user_agent in loaded {
-            if default_names.contains(&user_agent.name) {
-                if let Some(pos) = merged.iter().position(|a| a.name == user_agent.name) {
+            let normalized = user_agent.name.to_lowercase();
+            if default_names.contains(&normalized) {
+                if let Some(pos) = merged
+                    .iter()
+                    .position(|a| a.name.to_lowercase() == normalized)
+                {
                     merged[pos] = user_agent;
                 }
             } else {
@@ -538,7 +580,10 @@ agent name="duplicate" {
         }
 
         assert_eq!(merged.len(), 5);
-        let cursor_agent = merged.iter().find(|a| a.name == "cursor").unwrap();
+        let cursor_agent = merged
+            .iter()
+            .find(|a| a.name.to_lowercase() == "cursor")
+            .unwrap();
         assert_eq!(cursor_agent.command, "custom-cursor");
         assert!(merged.iter().any(|a| a.name == "custom"));
         assert!(merged.iter().any(|a| a.name == "claude"));

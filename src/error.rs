@@ -50,6 +50,8 @@ pub enum MaestroError {
 
     #[error("Invalid agent config: {0}")]
     InvalidAgentConfig(String),
+    #[error("Invalid agent arguments: {0}")]
+    InvalidAgentArgs(String),
 
     // Runtime errors
     #[error("Invalid mode")]
@@ -153,6 +155,10 @@ mod tests {
         assert_eq!(
             MaestroError::InvalidAgentConfig("missing name".to_string()).to_string(),
             "Invalid agent config: missing name"
+        );
+        assert_eq!(
+            MaestroError::InvalidAgentArgs("unmatched quote".to_string()).to_string(),
+            "Invalid agent arguments: unmatched quote"
         );
     }
 

@@ -84,7 +84,7 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
         return Err(MaestroError::CommandRequired);
     }
     let args = shell_words::split(&model.agent_form.args)
-        .map_err(|e| MaestroError::InvalidAgentConfig(e.to_string()))?;
+        .map_err(|e| MaestroError::InvalidAgentArgs(e.to_string()))?;
     let note = if model.agent_form.note.trim().is_empty() {
         None
     } else {
@@ -99,7 +99,12 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
 }
 
 fn set_selection_by_name(model: &mut Model, name: &str) {
-    if let Some(pos) = model.agents.iter().position(|a| a.name == name) {
+    let target = name.to_lowercase();
+    if let Some(pos) = model
+        .agents
+        .iter()
+        .position(|a| a.name.to_lowercase() == target)
+    {
         model.selected_agent = pos;
     } else {
         model.clamp_selections();
@@ -107,7 +112,12 @@ fn set_selection_by_name(model: &mut Model, name: &str) {
 }
 
 pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<()> {
-    if model.agents.iter().any(|a| a.name == agent.name) {
+    let new_name = agent.name.to_lowercase();
+    if model
+        .agents
+        .iter()
+        .any(|a| a.name.to_lowercase() == new_name)
+    {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
     model.agents.push(agent.clone());
@@ -117,11 +127,12 @@ pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResu
 pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<()> {
     if let Some(idx) = model.agent_form.target {
         if idx < model.agents.len() {
+            let new_name = agent.name.to_lowercase();
             if model
                 .agents
                 .iter()
                 .enumerate()
-                .any(|(i, a)| i != idx && a.name == agent.name)
+                .any(|(i, a)| i != idx && a.name.to_lowercase() == new_name)
             {
                 return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
@@ -328,6 +339,21 @@ mod tests {
     }
 
     #[test]
+    fn test_build_agent_from_inputs_invalid_args() {
+        let mut model = create_test_model();
+        model.agent_form.name = "test-agent".to_string();
+        model.agent_form.command = "codex".to_string();
+        model.agent_form.args = "/review \"unterminated".to_string();
+
+        let result = build_agent_from_inputs(&model);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::InvalidAgentArgs(_)
+        ));
+    }
+
+    #[test]
     fn test_build_agent_from_inputs_empty_args() {
         let mut model = create_test_model();
         model.agent_form.name = "test-agent".to_string();
@@ -356,6 +382,20 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_agent_create_duplicate_case_insensitive() {
+        let mut model = create_test_model();
+        model.agents.push(create_test_agent("Existing"));
+        let agent = create_test_agent("existing");
+
+        let result = apply_agent_create(&mut model, agent);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::DuplicateAgentName(_)
+        ));
+    }
+
+    #[test]
     fn test_apply_agent_edit_no_selection() {
         let mut model = create_test_model();
         let agent = create_test_agent("new-agent");
@@ -369,6 +409,22 @@ mod tests {
     fn test_apply_agent_edit_duplicate() {
         let mut model = create_test_model();
         model.agents.push(create_test_agent("agent1"));
+        model.agents.push(create_test_agent("agent2"));
+        model.agent_form.target = Some(0);
+        let agent = create_test_agent("agent2");
+
+        let result = apply_agent_edit(&mut model, agent);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::DuplicateAgentName(_)
+        ));
+    }
+
+    #[test]
+    fn test_apply_agent_edit_duplicate_case_insensitive() {
+        let mut model = create_test_model();
+        model.agents.push(create_test_agent("Agent1"));
         model.agents.push(create_test_agent("agent2"));
         model.agent_form.target = Some(0);
         let agent = create_test_agent("agent2");
