@@ -7,6 +7,7 @@ use crate::model::Model;
 use crate::utils::truncate;
 use crate::WASI_HOST_MOUNT;
 
+// Zellij terminal palette indices
 const COLOR_GREEN: usize = 2;
 const COLOR_RED: usize = 1;
 const MAX_SUGGESTIONS_DISPLAYED: usize = 5;

@@ -172,7 +172,7 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                 };
                 spawn_agent_pane(model, workspace, agent, tab_choice);
                 if model.error_message.is_empty() {
-                    view_preserve_messages(model);
+                    model.mode = Mode::View;
                     close_self();
                 }
             }
@@ -264,10 +264,6 @@ fn cancel_to_view(model: &mut Model) {
     model.clear_error();
 }
 
-fn view_preserve_messages(model: &mut Model) {
-    model.mode = Mode::View;
-}
-
 fn move_pane_selection(model: &mut Model, delta: isize) {
     let len = model.agent_panes.len();
     if len == 0 {
@@ -276,7 +272,6 @@ fn move_pane_selection(model: &mut Model, delta: isize) {
     let current = model.selected_pane as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     model.selected_pane = next;
-    model.clear_error();
 }
 
 fn move_agent_selection(model: &mut Model, delta: isize) {
@@ -287,5 +282,4 @@ fn move_agent_selection(model: &mut Model, delta: isize) {
     let current = model.selected_agent as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     model.selected_agent = next;
-    model.clear_error();
 }

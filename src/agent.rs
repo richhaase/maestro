@@ -25,16 +25,17 @@ pub struct Agent {
 }
 
 /// Runtime status of an agent pane.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum PaneStatus {
     /// The pane is currently running.
+    #[default]
     Running,
     /// The pane has exited with an optional exit code.
     Exited(Option<i32>),
 }
 
 /// A running instance of an agent in a Zellij pane.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AgentPane {
     /// Unique pane title (includes UUID for disambiguation).
     pub pane_title: String,
@@ -173,7 +174,7 @@ fn validate_agent_name(name: &str) -> MaestroResult<()> {
             "cannot contain control characters".to_string(),
         ));
     }
-    if name.len() > MAX_AGENT_NAME_LENGTH {
+    if name.chars().count() > MAX_AGENT_NAME_LENGTH {
         return Err(MaestroError::InvalidAgentName(format!(
             "cannot exceed {} characters",
             MAX_AGENT_NAME_LENGTH
