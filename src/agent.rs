@@ -157,6 +157,23 @@ pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
     Ok(merged)
 }
 
+const MAX_AGENT_NAME_LENGTH: usize = 64;
+
+fn validate_agent_name(name: &str) -> MaestroResult<()> {
+    if name.chars().any(|c| c.is_control()) {
+        return Err(MaestroError::InvalidAgentName(
+            "cannot contain control characters".to_string(),
+        ));
+    }
+    if name.len() > MAX_AGENT_NAME_LENGTH {
+        return Err(MaestroError::InvalidAgentName(format!(
+            "cannot exceed {} characters",
+            MAX_AGENT_NAME_LENGTH
+        )));
+    }
+    Ok(())
+}
+
 fn validate_agents(agents: &[Agent]) -> MaestroResult<()> {
     let mut seen = BTreeSet::new();
     for agent in agents {
@@ -164,6 +181,7 @@ fn validate_agents(agents: &[Agent]) -> MaestroResult<()> {
         if name.is_empty() {
             return Err(MaestroError::AgentNameRequired);
         }
+        validate_agent_name(name)?;
         if agent.command.trim().is_empty() {
             return Err(MaestroError::CommandRequired);
         }
@@ -321,6 +339,49 @@ mod tests {
         ];
 
         assert!(validate_agents(&agents).is_err());
+    }
+
+    #[test]
+    fn test_validate_agent_name_control_chars() {
+        let agents = vec![Agent {
+            name: "test\nagent".to_string(),
+            command: "cmd".to_string(),
+            args: Vec::new(),
+            note: None,
+        }];
+        let result = validate_agents(&agents);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::InvalidAgentName(_)
+        ));
+    }
+
+    #[test]
+    fn test_validate_agent_name_too_long() {
+        let agents = vec![Agent {
+            name: "a".repeat(65),
+            command: "cmd".to_string(),
+            args: Vec::new(),
+            note: None,
+        }];
+        let result = validate_agents(&agents);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MaestroError::InvalidAgentName(_)
+        ));
+    }
+
+    #[test]
+    fn test_validate_agent_name_max_length_ok() {
+        let agents = vec![Agent {
+            name: "a".repeat(64),
+            command: "cmd".to_string(),
+            args: Vec::new(),
+            note: None,
+        }];
+        assert!(validate_agents(&agents).is_ok());
     }
 
     #[test]

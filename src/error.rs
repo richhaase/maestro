@@ -15,6 +15,9 @@ pub enum MaestroError {
     #[error("Duplicate agent name: {0}")]
     DuplicateAgentName(String),
 
+    #[error("Invalid agent name: {0}")]
+    InvalidAgentName(String),
+
     // Agent selection errors
     #[error("No agent selected")]
     NoAgentSelected,
@@ -82,6 +85,10 @@ mod tests {
         assert_eq!(
             MaestroError::DuplicateAgentName("test".to_string()).to_string(),
             "Duplicate agent name: test"
+        );
+        assert_eq!(
+            MaestroError::InvalidAgentName("contains newline".to_string()).to_string(),
+            "Invalid agent name: contains newline"
         );
     }
 

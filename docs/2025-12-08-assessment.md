@@ -120,20 +120,19 @@ Using `Option<String>` would add `Some()` boilerplate without meaningful safety 
 
 ---
 
-### 8. No Input Validation for Agent Names
+### 8. ~~No Input Validation for Agent Names~~ - RESOLVED
 
-**Location**: `agent.rs:150-164`
+**Status**: Fixed on 2025-12-08
 
-Validation only checks for empty names and duplicates. Agent names with special characters (newlines, quotes, KDL syntax) could break serialization. Add character validation:
+**Changes Made**:
+- Added `InvalidAgentName` error variant
+- Added `validate_agent_name()` function that rejects:
+  - Control characters (newlines, tabs, etc.)
+  - Names exceeding 64 characters
+- Integrated validation into `validate_agents()`
+- Added 3 new tests for validation
 
-```rust
-fn validate_agent_name(name: &str) -> Result<()> {
-    if name.chars().any(|c| c.is_control() || c == '"' || c == '{') {
-        bail!("invalid character in agent name");
-    }
-    Ok(())
-}
-```
+**Result**: Agent names are now validated before save. All 49 tests pass.
 
 ---
 
