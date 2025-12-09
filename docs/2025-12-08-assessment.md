@@ -27,29 +27,15 @@ The codebase is well-structured for a Zellij plugin with good separation of conc
 - *Updated ~195 call sites across handlers/, ui.rs, and main.rs*
 - *Reduced model.rs from 297 to 105 lines (-65%)*
 
-### 1.2 Dual Validation Systems
+### 1.2 ~~Dual Validation Systems~~ ✅ RESOLVED
 
-Validation logic is duplicated between `Agent::validate()` and `build_agent_from_inputs()`:
+~~Validation logic is duplicated between `Agent::validate()` and `build_agent_from_inputs()`.~~
 
-```rust
-// agent.rs:37-46 - Uses anyhow
-impl Agent {
-    pub fn validate(&self) -> Result<()> {
-        if name.is_empty() { bail!("agent name is required"); }
-        if self.command.trim().is_empty() { bail!("agent command is required"); }
-    }
-}
+*`Agent::validate()` was removed as unused code on 2025-12-08 (see section 1.3).*
 
-// handlers.rs:483-514 - Uses MaestroError
-fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
-    if name.is_empty() { return Err(MaestroError::AgentNameRequired); }
-    if command.is_empty() { return Err(MaestroError::CommandRequired); }
-}
-```
-
-**Problem**: Two different error types for the same validation. `Agent::validate()` is defined but never called anywhere in the codebase.
-
-**Recommendation**: Remove `Agent::validate()` or consolidate validation into a single location using `MaestroError`.
+*Remaining validation serves distinct purposes:*
+- *`validate_agents()` in `agent.rs`: File I/O validation (batch, duplicate check, `anyhow` for internal errors)*
+- *`build_agent_from_inputs()` in `forms.rs`: Form validation (single agent, `MaestroError` for user-facing errors)*
 
 ### 1.3 ~~Unused Code~~ ✅ RESOLVED
 
