@@ -1,35 +1,29 @@
 # Changelog
-All notable changes are tracked here following [Keep a Changelog](https://keepachangelog.com/) and Semantic Versioning once releases are tagged.
+All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- _No changes yet._
 
 ## [0.1.4] - 2025-12-08
+### Fixes
+- Match panes to agent definitions using the full command string (including args) so session rebuilds continue to track custom agents correctly. ([325f3da](https://github.com/richhaase/maestro/commit/325f3da))
 
 ## [0.1.3] - 2025-12-08
 ### Breaking Changes
-- Dropped the Agent `env` field across serialization, forms, and command construction; existing `env` entries are ignored and removed when saving, so set environment variables in your shell instead. (`de11097`)
+- Removed the broken per-agent `env` field; commands now assume the first token is the executable, preventing Maestro from trying to run `KEY=value` binaries. ([de11097](https://github.com/richhaase/maestro/commit/de11097))
 
 ## [0.1.2] - 2025-12-08
 ### Features
-- Added a dedicated `args` field to Agent definitions (KDL parsing, UI form, and persistence), allowing commands and arguments to be edited separately while remaining backward compatible with inline args. (`9d2cda9`)
-### Fixes
-- Switched pane spawning to `CommandToRun::new_with_args`, ensuring agent arguments reach spawned panes instead of being concatenated into a single string. (`9d2cda9`)
+- Added a dedicated `args` field to agent definitions so multi-argument commands remain ordered and editable from the UI. ([9d2cda9](https://github.com/richhaase/maestro/commit/9d2cda9))
 
-## [0.1.1] - 2025-12-07
+## [0.1.1] - 2025-12-06
 ### Features
-- Added typedown autocomplete while entering workspace paths. (`ebe4293`)
-- Added fuzzy “filter or create” interface to the agent selection step, plus a matching tab filter/creation flow. (`0e729e3`, `a363547`)
-- Updated the Agent Config pane so `Enter` launches, `e` edits, and the section is labeled “Agent Config”. (`d9efa3d`)
-- Seeded default agents (cursor, claude, gemini, codex) and enhanced pane matching against their commands. (`2c4b702`)
-- Expanded inline unit tests covering models, handlers, and error handling. (`61413cc`)
-- Replaced ad-hoc string errors with structured error types for better user-facing messages. (`be89112`)
-### Fixes
-- Fixed workspace path resolution to use relative paths so Zellij opens panes in the expected directory. (`6300cbc`)
-- Restored filtering so panes only display for the current session. (`d95b489`)
-- Scoped agent panes to the current session to avoid cross-session leakage. (`3fc4dff`)
-- Cleaned up dead code, unused imports, and clippy warnings. (`764d530`, `c3f8e3b`)
-- Extracted permission rendering and event handlers to dedicated modules, reducing UI glitches during permission prompts. (`0bf6bb7`, `fc0007f`)
-- Removed obsolete planning docs from `docs/` to avoid stale references. (`b244572`, `ac2951b`)
-### Breaking Changes
-- Changed the agent config path to be relative to the user home directory, so existing configs must be moved to `~/.config/maestro/agents.kdl`. (`1292d8a`)
-- Refactored the model and agent persistence layers (Phases 1 & 2) to new module layouts; downstream forks should update module imports. (`f614b2f`, `87ae9a9`, `6cabf19`)
+- Initial release with agent persistence under `~/.config/maestro/agents.kdl`, default agent templates, and end-to-end launch/focus/kill piping through Zellij panes. ([79db865](https://github.com/richhaase/maestro/commit/79db865), [026175b](https://github.com/richhaase/maestro/commit/026175b), [61413cc](https://github.com/richhaase/maestro/commit/61413cc))
+- Added fuzzy workspace autocomplete and agent selection flows to the new-pane wizard for quick keyboard navigation. ([ebe4293](https://github.com/richhaase/maestro/commit/ebe4293), [0e729e3](https://github.com/richhaase/maestro/commit/0e729e3))
+- Implemented pane focus/kill commands, auto-close-on-focus, and session resync logic to keep the UI accurate after reloads. ([1557358](https://github.com/richhaase/maestro/commit/1557358), [dd87d4a](https://github.com/richhaase/maestro/commit/dd87d4a), [3b6323f](https://github.com/richhaase/maestro/commit/3b6323f))
+
+[Unreleased]: https://github.com/richhaase/maestro/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/richhaase/maestro/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/richhaase/maestro/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/richhaase/maestro/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/richhaase/maestro/releases/tag/v0.1.1

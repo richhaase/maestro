@@ -1,101 +1,80 @@
 # Maestro
-
-Maestro is a Zellij plugin that launches and manages "agent" command panes entirely from the keyboard.
+Zellij plugin that spawns and manages panes running CLI-based AI coding agents (Claude, Cursor, etc.) entirely from the keyboard.
 
 ## Quick Start
-
-1. Install prerequisites: `zellij` ≥ 0.43, `rustup`, `cargo`, and a WASI runtime such as `wasmtime`.
-2. Enable the WASI target (once): `rustup target add wasm32-wasip1`
-3. Build the plugin: `cargo build --release --target wasm32-wasip1`
-4. Copy the WASM artifact into Zellij’s plugin directory:
-   ```
+1. **Build the plugin once**
+   ```sh
+   git clone https://github.com/richhaase/maestro.git
+   cd maestro
+   rustup target add wasm32-wasip1
+   cargo build --release --target wasm32-wasip1
    mkdir -p ~/.config/zellij/plugins
    cp target/wasm32-wasip1/release/maestro.wasm ~/.config/zellij/plugins/
    ```
-5. Launch from an existing session:
 
-   ```
-   zellij action start-plugin file:~/.config/zellij/plugins/maestro.wasm
-   ```
+2. **Wire up the hot-key exactly as shown in `~/.config/zellij/config.kdl`**
 
-   or with a hot-key:
+   Edit `~/.config/zellij/config.kdl` and ensure the following entries exist (replace `/home/you` with your actual host home directory):
 
-   ```
-   shared_among "normal" "locked" {
-
+   ```kdl
+   keybinds clear-defaults=true {
      ...
-
-     bind "Alt m" {
-       LaunchOrFocusPlugin "file:~/.config/zellij/plugins/maestro.wasm" {
-         floating true
-         move_to_focused_tab true
-         cwd "/Users/you"   # ensure /host maps back to $HOME
+     shared_among "normal" "locked" {
+       ...
+       bind "Alt m" {
+         LaunchOrFocusPlugin "file:~/.config/zellij/plugins/maestro.wasm" {
+           floating true
+           move_to_focused_tab true
+           cwd "/home/you"
+         }
        }
+     }
+     ...
+   }
+
+   plugins {
+     ...
+     maestro location="file:~/.config/zellij/plugins/maestro.wasm" {
+       cwd "/home/you"
      }
    }
    ```
 
-   or embed it in a layout:
+   - The `bind "Alt m"` stanza lives in the `shared_among "normal" "locked"` block so the shortcut works from either mode.
+   - The `plugins { maestro ... }` alias preloads Maestro and sets the same host-side `cwd`. This ensures `/host` inside the WASI sandbox maps back to your real home directory where `~/.config/maestro` lives.
 
-   ```
-   plugins {
-       maestro location="file:~/.config/zellij/plugins/maestro.wasm" {
-           cwd "/Users/you"  # map /host back to your home directory
-       }
-   }
-   ```
+3. **Reload/launch Zellij and press `Alt+m`**
+   - The first invocation prompts for permissions (Read/Change application state, Open terminals/plugins, Run commands, etc.). Accept once.
+   - Subsequent presses of `Alt+m` toggle Maestro as a floating pane focused on the current tab.
 
 ## Key Commands
-
-- `Tab` — toggle focus between the Agent Pane list and the Agent Config list.
-- `↑` / `↓` — move within whichever pane is focused.
-- `Enter` — focus the selected running pane or advance wizard steps.
-- `n` — open the “new agent pane” wizard (workspace → tab → agent).
-- `f` — toggle filter mode on the Agent Pane list and type to fuzzy-match.
-- `x` — terminate the selected pane.
-- `a` / `e` / `d` — add, edit, or delete agents (with confirmation).
-- Agent config form order: Name → Command → Args → Note.
-
-## Installation
-
-1. Clone this repo and build the release WASM:
-   ```
-   git clone https://github.com/<owner>/maestro.git
-   cd maestro
-   rustup target add wasm32-wasip1
-   cargo build --release --target wasm32-wasip1
-   ```
-2. Copy `target/wasm32-wasip1/release/maestro.wasm` into `~/.config/zellij/plugins/`.
-3. Start or reload Zellij and use `zellij action start-plugin file:~/.config/zellij/plugins/maestro.wasm` (or reference it from a layout as shown above). Always load the optimized `--release` build for fast startup.
+- **Main pane list:** `↑/↓` select panes • `Enter` focus selected pane (Maestro auto-closes) • `d` kill pane • `n` new-pane wizard • `c` agent config • `Esc` close Maestro.
+- **Agent Config overlay:** `↑/↓` move • `a` add • `e` edit • `d` delete (with confirmation) • `Esc` return.
+- **New-pane wizard:**
+  - Workspace step: type path, `Tab` accept suggestion, `↑/↓` move through suggestions, `Enter` confirm, `Esc` cancel.
+  - Agent step: type to fuzzy-filter, `↑/↓` highlight match, `Enter` spawn pane, `Esc` cancel.
+- **Agent form:** `↑/↓` cycle fields (Name → Command → Args → Note) • type to edit • `Enter` save • `Esc` cancel.
+- **Delete confirm:** `Enter`/`y` delete • `Esc`/`n` cancel.
 
 ## Configuration
+- Maestro persists agents to `~/.config/maestro/agents.kdl` on the host (seen as `/host/.config/maestro/agents.kdl` inside the plugin).
+- Default agents (`cursor`, `claude`, `gemini`, `codex`) merge in at startup; only non-default entries are written back.
+- Manage agents via the in-plugin UI to avoid malformed KDL.
 
-- Agent definitions live at `~/.config/maestro/agents.kdl`.
-- On startup Maestro merges that file with built-in agents (`cursor`, `claude`, `gemini`, `codex`) and deduplicates by name. Only non-default agents are written back.
-- Example entry:
-  ```
-  agent name="my-agent" note="Internal helper" {
-      cmd "my-agent-cli" "--api"
-      args "--review" "--debug"
-  }
-  ```
-- `cmd` captures the executable (and any inline args); optional `args` entries append additional flags. Notes appear in the Agent Config table. Per-agent environment variables are not supported—set them via your shell or launcher instead.
-- Use the in-plugin Agent Config UI to avoid malformed KDL; Maestro creates `~/.config/maestro/agents.kdl` on first save.
+Example entry:
+```kdl
+agent name="codex-review" note="Verbose reviewer" {
+    cmd "codex"
+    args "/review" "--verbose"
+}
+```
 
 ## Development
-
-- Run unit tests before committing: `cargo test`
-- Lint logic-heavy changes: `cargo clippy --all-targets`
-- When debugging inside Zellij, enable logs with `zellij --log-to-file true` and set `RUST_LOG=debug`.
-
-## Releasing
-
-Maestro uses [`cargo-release`](https://github.com/crate-ci/cargo-release).
-
-```
-cargo install cargo-release                 # once
-cargo release patch --dry-run               # preview
-cargo release patch --execute               # bump version, tag, push
-```
-
-Tagging `v*` kicks off the GitHub Actions workflow that builds and publishes the WASM artifact.
+- Format, lint, and test before committing:
+  ```sh
+  cargo fmt
+  cargo clippy --all-targets --all-features
+  cargo test
+  ```
+- Release build (needed for Zellij): `cargo build --release --target wasm32-wasip1`
+- Debugging: run `zellij --log-to-file true` and set `RUST_LOG=debug` before launching Maestro to capture plugin logs under `~/.cache/zellij/`.
