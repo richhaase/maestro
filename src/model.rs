@@ -103,9 +103,11 @@ mod tests {
 
     #[test]
     fn test_clamp_selections_empty() {
-        let mut model = Model::default();
-        model.selected_pane = 5;
-        model.selected_agent = 3;
+        let mut model = Model {
+            selected_pane: 5,
+            selected_agent: 3,
+            ..Default::default()
+        };
         model.clamp_selections();
         assert_eq!(model.selected_pane, 0);
         assert_eq!(model.selected_agent, 0);
