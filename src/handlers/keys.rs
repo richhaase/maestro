@@ -24,10 +24,6 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
 }
 
 fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
-    if !key.key_modifiers.is_empty() {
-        return;
-    }
-
     match key.bare_key {
         BareKey::Down => {
             move_pane_selection(model, 1);
@@ -59,10 +55,6 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
 }
 
 fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
-    if !key.key_modifiers.is_empty() {
-        return;
-    }
-
     match key.bare_key {
         BareKey::Down => {
             move_agent_selection(model, 1);
@@ -189,13 +181,12 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
     if handle_form_text(model, &key) {
         return;
     }
-    let shift_tab = key.bare_key == BareKey::Tab && key.key_modifiers.contains(&KeyModifier::Shift);
     match key.bare_key {
-        BareKey::Tab if shift_tab => {
-            model.agent_form.field = prev_field(model.agent_form.field);
-        }
-        BareKey::Tab => {
+        BareKey::Down => {
             model.agent_form.field = next_field(model.agent_form.field);
+        }
+        BareKey::Up => {
+            model.agent_form.field = prev_field(model.agent_form.field);
         }
         BareKey::Enter => match build_agent_from_inputs(model) {
             Ok(agent) => {

@@ -334,7 +334,7 @@ fn render_status(model: &Model, cols: usize) -> String {
         Mode::AgentConfig => "↑/↓ move • a add • e edit • d delete • Esc back",
         Mode::NewPaneWorkspace => "↑/↓ select • Enter continue • Esc cancel",
         Mode::NewPaneAgentSelect => "type to filter • ↑/↓ move • Enter select • Esc cancel",
-        Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
+        Mode::AgentFormCreate | Mode::AgentFormEdit => "↑/↓ move • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };
     let msg = if !model.error_message.is_empty() {

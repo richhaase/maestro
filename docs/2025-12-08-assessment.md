@@ -136,17 +136,16 @@ Using `Option<String>` would add `Some()` boilerplate without meaningful safety 
 
 ---
 
-### 9. Key Modifier Handling Drops Useful Keys
+### 9. ~~Key Modifier Handling Drops Useful Keys~~ - RESOLVED
 
-**Location**: `handlers/keys.rs:27-29` (repeated multiple times)
+**Status**: Fixed on 2025-12-08
 
-```rust
-if !key.key_modifiers.is_empty() {
-    return;
-}
-```
+**Changes Made**:
+- Removed blanket modifier rejection from `handle_key_event_view()` and `handle_key_event_agent_config()`
+- Replaced Tab/Shift+Tab form navigation with Up/Down arrows for consistency
+- Updated UI hint to show `↑/↓ move` instead of `[Tab] next field`
 
-This drops ALL modified keys including potentially useful ones like `Shift+Tab` in non-form contexts or `Ctrl+C` for copy. The logic should be more selective.
+**Result**: Navigation is now consistent across all modes (arrows everywhere). Unknown modifier combinations simply fall through to `_ => {}`. All 49 tests pass.
 
 ---
 
