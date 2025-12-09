@@ -36,7 +36,11 @@ pub fn spawn_agent_pane(
         return;
     }
 
-    let cmd = match model.agents.iter().find(|a| names_match(&a.name, &agent_name)) {
+    let cmd = match model
+        .agents
+        .iter()
+        .find(|a| names_match(&a.name, &agent_name))
+    {
         Some(a) => build_command(a),
         None => {
             model.error_message = MaestroError::AgentNotFound(agent_name).to_string();
@@ -160,7 +164,10 @@ mod tests {
     #[test]
     fn test_derive_tab_name_from_workspace_host_only() {
         assert_eq!(derive_tab_name_from_workspace(WASI_HOST_MOUNT), None);
-        assert_eq!(derive_tab_name_from_workspace(&format!("{}/", WASI_HOST_MOUNT)), None);
+        assert_eq!(
+            derive_tab_name_from_workspace(&format!("{}/", WASI_HOST_MOUNT)),
+            None
+        );
         assert_eq!(derive_tab_name_from_workspace(""), None);
     }
 }
