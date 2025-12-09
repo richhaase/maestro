@@ -78,7 +78,7 @@ pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
 fn render_agent_panes(model: &Model, cols: usize) -> String {
     let mut table = Table::new().add_row(vec!["Tab", "Agent", "Status"]);
 
-    for (idx, pane) in model.agent_panes().iter().enumerate() {
+    for (idx, pane) in model.agent_panes.iter().enumerate() {
         let tab = truncate(&pane.tab_name, cols.saturating_sub(20));
         let agent = if pane.agent_name.is_empty() {
             "(agent)"
@@ -101,13 +101,13 @@ fn render_agent_panes(model: &Model, cols: usize) -> String {
             Text::new(status_text.to_string()).color_all(status_color),
         ];
 
-        if idx == model.selected_pane() {
+        if idx == model.selected_pane {
             row = row.into_iter().map(|t| t.selected()).collect();
         }
 
         table = table.add_styled_row(row);
     }
-    if model.agent_panes().is_empty() {
+    if model.agent_panes.is_empty() {
         table = table.add_row(vec![
             "(no agent panes)".to_string(),
             "".to_string(),
@@ -122,7 +122,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 
     let command_col_width = (cols as f32 * 0.50) as usize;
 
-    for (idx, agent) in model.agents().iter().enumerate() {
+    for (idx, agent) in model.agents.iter().enumerate() {
         let name = if agent.name.is_empty() {
             "(agent)"
         } else {
@@ -142,7 +142,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
             .unwrap_or("—");
 
         let row = vec![name.to_string(), command.to_string(), note.to_string()];
-        let styled = if idx == model.selected_agent() {
+        let styled = if idx == model.selected_agent {
             row.into_iter().map(|c| Text::new(c).selected()).collect()
         } else {
             row.into_iter().map(Text::new).collect()
@@ -150,7 +150,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
         table = table.add_styled_row(styled);
     }
 
-    if model.agents().is_empty() {
+    if model.agents.is_empty() {
         table = table.add_row(vec![
             "(no agents)".to_string(),
             "".to_string(),
@@ -162,7 +162,7 @@ fn render_agent_management(model: &Model, cols: usize) -> String {
 }
 
 fn render_overlay(model: &Model, cols: usize) -> Option<String> {
-    match model.mode() {
+    match model.mode {
         Mode::View => None,
         Mode::AgentConfig => {
             let lines = [
@@ -174,7 +174,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         }
         Mode::NewPaneWorkspace => {
             let mut lines = Vec::new();
-            let input = model.workspace_input();
+            let input = &model.workspace_input;
             let host_prefix = format!("{}/", WASI_HOST_MOUNT);
             let display_input = input.strip_prefix(&host_prefix).unwrap_or(input);
             lines.push("New Agent Pane: workspace path".to_string());
@@ -188,10 +188,10 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                 if !suggestions.is_empty() {
                     lines.push("".to_string());
                     let max_display = MAX_SUGGESTIONS_DISPLAYED;
-                    let start_idx = if model.browse_selected_idx() < max_display {
+                    let start_idx = if model.browse_selected_idx < max_display {
                         0
                     } else {
-                        model.browse_selected_idx().saturating_sub(max_display - 1)
+                        model.browse_selected_idx.saturating_sub(max_display - 1)
                     };
                     let end_idx = (start_idx + max_display).min(suggestions.len());
 
@@ -199,7 +199,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
                         suggestions[start_idx..end_idx].iter().enumerate()
                     {
                         let actual_idx = start_idx + display_idx;
-                        let prefix = if actual_idx == model.browse_selected_idx() {
+                        let prefix = if actual_idx == model.browse_selected_idx {
                             ">"
                         } else {
                             " "
@@ -225,7 +225,7 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
             let mut lines = Vec::new();
 
             // Show filter input
-            let filter = model.wizard_agent_filter();
+            let filter = &model.wizard_agent_filter;
             if filter.is_empty() {
                 lines.push("Select agent (type to filter):".to_string());
             } else {
@@ -234,18 +234,18 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
 
             // Get filtered agent indices
             let filtered_indices =
-                crate::utils::filter_agents_fuzzy(model.agents(), filter);
+                crate::utils::filter_agents_fuzzy(&model.agents, filter);
 
             if filtered_indices.is_empty() {
                 lines.push("  (no matching agents)".to_string());
             } else {
                 for (display_idx, &agent_idx) in filtered_indices.iter().enumerate() {
-                    let prefix = if display_idx == model.wizard_agent_idx() {
+                    let prefix = if display_idx == model.wizard_agent_idx {
                         ">"
                     } else {
                         " "
                     };
-                    let agent = &model.agents()[agent_idx];
+                    let agent = &model.agents[agent_idx];
                     lines.push(format!(
                         "{} {}",
                         prefix,
@@ -268,8 +268,8 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         )),
         Mode::DeleteConfirm => {
             let name = model
-                .form_target_agent()
-                .and_then(|idx| model.agents().get(idx))
+                .form_target_agent
+                .and_then(|idx| model.agents.get(idx))
                 .map(|a| a.name.as_str())
                 .unwrap_or("(unknown)");
             Some(format!(
@@ -291,33 +291,33 @@ fn render_agent_form_overlay(model: &Model, title: &str, cols: usize) -> String 
     };
     lines.push(mk(
         "Name",
-        model.agent_name_input(),
+        &model.agent_name_input,
         AgentFormField::Name,
-        model.agent_form_field(),
+        model.agent_form_field,
     ));
     lines.push(mk(
         "Command",
-        model.agent_command_input(),
+        &model.agent_command_input,
         AgentFormField::Command,
-        model.agent_form_field(),
+        model.agent_form_field,
     ));
     lines.push(mk(
         "Args",
-        model.agent_args_input(),
+        &model.agent_args_input,
         AgentFormField::Args,
-        model.agent_form_field(),
+        model.agent_form_field,
     ));
     lines.push(mk(
         "Note",
-        model.agent_note_input(),
+        &model.agent_note_input,
         AgentFormField::Note,
-        model.agent_form_field(),
+        model.agent_form_field,
     ));
     lines.join("\n")
 }
 
 fn render_status(model: &Model, cols: usize) -> String {
-    let hints = match model.mode() {
+    let hints = match model.mode {
         Mode::View => "↑/↓ move • Enter focus • d kill • n new • c config • Esc close",
         Mode::AgentConfig => "↑/↓ move • a add • e edit • d delete • Esc back",
         Mode::NewPaneWorkspace => "↑/↓ select • Enter continue • Esc cancel",
@@ -325,8 +325,8 @@ fn render_status(model: &Model, cols: usize) -> String {
         Mode::AgentFormCreate | Mode::AgentFormEdit => "[Tab] next field • Enter save • Esc cancel",
         Mode::DeleteConfirm => "[Enter/y] confirm • [Esc/n] cancel",
     };
-    let msg = if !model.error_message().is_empty() {
-        format!("ERROR: {}", model.error_message())
+    let msg = if !model.error_message.is_empty() {
+        format!("ERROR: {}", model.error_message)
     } else {
         hints.to_string()
     };

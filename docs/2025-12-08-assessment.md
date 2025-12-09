@@ -16,28 +16,16 @@ The codebase is well-structured for a Zellij plugin with good separation of conc
 
 ## 1. Architectural & Design Pattern Issues
 
-### 1.1 Verbose Accessor Pattern in Model
+### 1.1 ~~Verbose Accessor Pattern in Model~~ ✅ RESOLVED
 
-The `Model` struct uses an accessor pattern with both `foo()` and `foo_mut()` methods for every field, resulting in 50+ boilerplate methods (lines 41-236 in `model.rs`).
+~~The `Model` struct uses an accessor pattern with both `foo()` and `foo_mut()` methods for every field, resulting in 50+ boilerplate methods (lines 41-236 in `model.rs`).~~
 
-```rust
-// model.rs:42-48 - Some return slices
-pub fn agents(&self) -> &[Agent] { &self.agents }
-pub fn agents_mut(&mut self) -> &mut Vec<Agent> { &mut self.agents }
-
-// model.rs:66-68 - Some return references
-pub fn error_message(&self) -> &str { &self.error_message }
-
-// model.rs:78-79 - Some return Copy types
-pub fn mode(&self) -> Mode { self.mode }
-
-// model.rs:206-208 - Some return Option<&T>
-pub fn session_name(&self) -> Option<&String> { self.session_name.as_ref() }
-```
-
-**Problem**: This creates significant maintenance burden without clear benefit. The `Model` struct is only accessed from `handlers.rs` and `ui.rs`—both internal modules.
-
-**Recommendation**: Either make fields `pub(crate)` for direct access, or use a more focused pattern (e.g., separate `FormState` struct with its own methods).
+*Refactored on 2025-12-08:*
+- *Removed `FormState` and `SelectionState` sub-structs*
+- *Flattened all 24 fields into `Model` with `pub` visibility*
+- *Removed ~40 accessor methods, kept only `clamp_selections()`*
+- *Updated ~195 call sites across handlers/, ui.rs, and main.rs*
+- *Reduced model.rs from 297 to 105 lines (-65%)*
 
 ### 1.2 Dual Validation Systems
 
@@ -270,7 +258,7 @@ All tests are unit tests. Missing coverage for:
 
 | Issue | Action | Impact | Status |
 |-------|--------|--------|--------|
-| Accessor boilerplate | Make fields `pub(crate)` | Code reduction | |
+| ~~Accessor boilerplate~~ | ~~Make fields `pub`~~ | ~~Code reduction~~ | ✅ Done |
 | ~~Defensive cloning~~ | ~~Use references where possible~~ | ~~Performance~~ | ✅ Done |
 | Public API surface | Change modules to `pub(crate)` | Encapsulation | |
 
@@ -288,9 +276,9 @@ All tests are unit tests. Missing coverage for:
 | `agent.rs` | 545 | Agent config, KDL I/O |
 | `utils.rs` | 409 | Path utilities, helpers |
 | `ui.rs` | 333 | Rendering, mode definitions |
-| `model.rs` | 304 | State container |
+| `model.rs` | 105 | State container |
 | `main.rs` | 111 | Plugin entry point |
 | `error.rs` | 58 | Error types |
 | `lib.rs` | 11 | Module exports |
 
-**Total**: ~2,611 lines (handlers/ split reduced duplication)
+**Total**: ~2,412 lines (model.rs refactor removed accessor boilerplate)

@@ -28,10 +28,10 @@ pub struct Maestro {
 impl ZellijPlugin for Maestro {
     fn load(&mut self, _configuration: BTreeMap<String, String>) {
         match load_agents_default() {
-            Ok(list) => *self.model.agents_mut() = list,
+            Ok(list) => self.model.agents = list,
             Err(err) => {
                 eprintln!("maestro: load agents: {err}");
-                *self.model.agents_mut() = Vec::new();
+                self.model.agents = Vec::new();
             }
         }
 
@@ -95,11 +95,11 @@ impl ZellijPlugin for Maestro {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if self.model.permissions_denied() {
+        if self.model.permissions_denied {
             print!("{}", render_permissions_denied(rows, cols));
             return;
         }
-        if !self.model.permissions_granted() {
+        if !self.model.permissions_granted {
             print!("{}", render_permissions_requesting(rows, cols));
             return;
         }

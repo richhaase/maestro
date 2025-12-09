@@ -26,84 +26,80 @@ pub(super) fn handle_text_edit(target: &mut String, key: &KeyWithModifier) -> bo
 }
 
 pub(super) fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool {
-    match model.agent_form_field() {
-        AgentFormField::Name => handle_text_edit(model.agent_name_input_mut(), key),
-        AgentFormField::Command => handle_text_edit(model.agent_command_input_mut(), key),
-        AgentFormField::Args => handle_text_edit(model.agent_args_input_mut(), key),
-        AgentFormField::Note => handle_text_edit(model.agent_note_input_mut(), key),
+    match model.agent_form_field {
+        AgentFormField::Name => handle_text_edit(&mut model.agent_name_input, key),
+        AgentFormField::Command => handle_text_edit(&mut model.agent_command_input, key),
+        AgentFormField::Args => handle_text_edit(&mut model.agent_args_input, key),
+        AgentFormField::Note => handle_text_edit(&mut model.agent_note_input, key),
     }
 }
 
 pub(super) fn start_new_pane_workspace(model: &mut Model) {
-    model.workspace_input_mut().clear();
-    *model.custom_tab_name_mut() = None;
-    *model.wizard_agent_filter_mut() = String::new();
-    *model.browse_selected_idx_mut() = 0;
-    *model.mode_mut() = Mode::NewPaneWorkspace;
-    *model.wizard_agent_idx_mut() = 0;
-    model.error_message_mut().clear();
+    model.workspace_input.clear();
+    model.custom_tab_name = None;
+    model.wizard_agent_filter = String::new();
+    model.browse_selected_idx = 0;
+    model.mode = Mode::NewPaneWorkspace;
+    model.wizard_agent_idx = 0;
+    model.error_message.clear();
 }
 
 pub(super) fn start_agent_create(model: &mut Model) {
-    *model.mode_mut() = Mode::AgentFormCreate;
-    *model.agent_form_source_mut() = Some(Mode::View);
-    model.agent_name_input_mut().clear();
-    model.agent_command_input_mut().clear();
-    model.agent_args_input_mut().clear();
-    model.agent_note_input_mut().clear();
-    *model.agent_form_field_mut() = AgentFormField::Name;
-    *model.form_target_agent_mut() = None;
-    model.error_message_mut().clear();
+    model.mode = Mode::AgentFormCreate;
+    model.agent_form_source = Some(Mode::View);
+    model.agent_name_input.clear();
+    model.agent_command_input.clear();
+    model.agent_args_input.clear();
+    model.agent_note_input.clear();
+    model.agent_form_field = AgentFormField::Name;
+    model.form_target_agent = None;
+    model.error_message.clear();
 }
 
 pub(super) fn start_agent_edit(model: &mut Model) {
-    if model.agents().is_empty() {
-        *model.error_message_mut() = MaestroError::NoAgentsToEdit.to_string();
+    if model.agents.is_empty() {
+        model.error_message = MaestroError::NoAgentsToEdit.to_string();
         return;
     }
-    let idx = model
-        .selected_agent()
-        .min(model.agents().len().saturating_sub(1));
-    if let Some(agent) = model.agents().get(idx) {
+    let idx = model.selected_agent.min(model.agents.len().saturating_sub(1));
+    if let Some(agent) = model.agents.get(idx) {
         let agent_name = agent.name.clone();
         let agent_command = agent.command.clone();
         let agent_args = agent.args.as_ref().map(|a| a.join(" ")).unwrap_or_default();
         let agent_note = agent.note.clone().unwrap_or_default();
-        *model.agent_name_input_mut() = agent_name;
-        *model.agent_command_input_mut() = agent_command;
-        *model.agent_args_input_mut() = agent_args;
-        *model.agent_note_input_mut() = agent_note;
-        *model.agent_form_field_mut() = AgentFormField::Name;
-        *model.form_target_agent_mut() = Some(idx);
-        *model.agent_form_source_mut() = Some(Mode::View);
-        *model.mode_mut() = Mode::AgentFormEdit;
-        model.error_message_mut().clear();
+        model.agent_name_input = agent_name;
+        model.agent_command_input = agent_command;
+        model.agent_args_input = agent_args;
+        model.agent_note_input = agent_note;
+        model.agent_form_field = AgentFormField::Name;
+        model.form_target_agent = Some(idx);
+        model.agent_form_source = Some(Mode::View);
+        model.mode = Mode::AgentFormEdit;
+        model.error_message.clear();
     }
 }
 
 pub(super) fn start_agent_delete_confirm(model: &mut Model) {
-    if model.agents().is_empty() {
-        *model.error_message_mut() = MaestroError::NoAgentsToDelete.to_string();
+    if model.agents.is_empty() {
+        model.error_message = MaestroError::NoAgentsToDelete.to_string();
         return;
     }
-    let idx = model
-        .selected_agent()
-        .min(model.agents().len().saturating_sub(1));
-    *model.form_target_agent_mut() = Some(idx);
-    *model.mode_mut() = Mode::DeleteConfirm;
-    model.error_message_mut().clear();
+    let idx = model.selected_agent.min(model.agents.len().saturating_sub(1));
+    model.form_target_agent = Some(idx);
+    model.mode = Mode::DeleteConfirm;
+    model.error_message.clear();
 }
 
 pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
-    let name = model.agent_name_input().trim().to_string();
+    let name = model.agent_name_input.trim().to_string();
     if name.is_empty() {
         return Err(MaestroError::AgentNameRequired);
     }
-    let command = model.agent_command_input().trim().to_string();
+    let command = model.agent_command_input.trim().to_string();
     if command.is_empty() {
         return Err(MaestroError::CommandRequired);
     }
-    let args_input = model.agent_args_input().trim();
+    let args_input = model.agent_args_input.trim();
     let args = if args_input.is_empty() {
         None
     } else {
@@ -114,10 +110,10 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
                 .collect(),
         )
     };
-    let note = if model.agent_note_input().trim().is_empty() {
+    let note = if model.agent_note_input.trim().is_empty() {
         None
     } else {
-        Some(model.agent_note_input().trim().to_string())
+        Some(model.agent_note_input.trim().to_string())
     };
     Ok(Agent {
         name,
@@ -128,27 +124,27 @@ pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
 }
 
 pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
-    if model.agents().iter().any(|a| a.name == agent.name) {
+    if model.agents.iter().any(|a| a.name == agent.name) {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
-    model.agents_mut().push(agent.clone());
-    *model.selected_agent_mut() = model.agents().len().saturating_sub(1);
+    model.agents.push(agent.clone());
+    model.selected_agent = model.agents.len().saturating_sub(1);
     persist_agents(model)
 }
 
 pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<PathBuf> {
-    if let Some(idx) = model.form_target_agent() {
-        if idx < model.agents().len() {
+    if let Some(idx) = model.form_target_agent {
+        if idx < model.agents.len() {
             if model
-                .agents()
+                .agents
                 .iter()
                 .enumerate()
                 .any(|(i, a)| i != idx && a.name == agent.name)
             {
                 return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
-            model.agents_mut()[idx] = agent;
-            *model.selected_agent_mut() = idx;
+            model.agents[idx] = agent;
+            model.selected_agent = idx;
             return persist_agents(model);
         }
     }
@@ -162,7 +158,7 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
             .map_err(|e| MaestroError::Config(anyhow::anyhow!("create config directory: {e}")))?;
     }
     let user_agents: Vec<_> = model
-        .agents()
+        .agents
         .iter()
         .filter(|a| !is_default_agent(&a.name))
         .cloned()
@@ -170,9 +166,9 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
     save_agents(&path, &user_agents)?;
     match crate::agent::load_agents_default() {
         Ok(list) => {
-            *model.agents_mut() = list;
+            model.agents = list;
             model.clamp_selections();
-            model.error_message_mut().clear();
+            model.error_message.clear();
             Ok(path)
         }
         Err(err) => Err(MaestroError::Config(err)),
@@ -246,28 +242,28 @@ mod tests {
     #[test]
     fn test_handle_form_text_name_field() {
         let mut model = create_test_model();
-        *model.agent_form_field_mut() = AgentFormField::Name;
+        model.agent_form_field = AgentFormField::Name;
         let key = char_key('t');
         assert!(handle_form_text(&mut model, &key));
-        assert_eq!(model.agent_name_input(), "t");
+        assert_eq!(model.agent_name_input, "t");
     }
 
     #[test]
     fn test_handle_form_text_command_field() {
         let mut model = create_test_model();
-        *model.agent_form_field_mut() = AgentFormField::Command;
+        model.agent_form_field = AgentFormField::Command;
         let key = char_key('e');
         assert!(handle_form_text(&mut model, &key));
-        assert_eq!(model.agent_command_input(), "e");
+        assert_eq!(model.agent_command_input, "e");
     }
 
     #[test]
     fn test_build_agent_from_inputs_valid() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo".to_string();
-        *model.agent_args_input_mut() = "hello world".to_string();
-        *model.agent_note_input_mut() = "test note".to_string();
+        model.agent_name_input = "test-agent".to_string();
+        model.agent_command_input = "echo".to_string();
+        model.agent_args_input = "hello world".to_string();
+        model.agent_note_input = "test note".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_ok());
@@ -284,8 +280,8 @@ mod tests {
     #[test]
     fn test_build_agent_from_inputs_empty_name() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "   ".to_string();
-        *model.agent_command_input_mut() = "echo".to_string();
+        model.agent_name_input = "   ".to_string();
+        model.agent_command_input = "echo".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_err());
@@ -298,8 +294,8 @@ mod tests {
     #[test]
     fn test_build_agent_from_inputs_empty_command() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "   ".to_string();
+        model.agent_name_input = "test-agent".to_string();
+        model.agent_command_input = "   ".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_err());
@@ -309,9 +305,9 @@ mod tests {
     #[test]
     fn test_build_agent_from_inputs_empty_note() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo".to_string();
-        *model.agent_note_input_mut() = "   ".to_string();
+        model.agent_name_input = "test-agent".to_string();
+        model.agent_command_input = "echo".to_string();
+        model.agent_note_input = "   ".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_ok());
@@ -322,9 +318,9 @@ mod tests {
     #[test]
     fn test_build_agent_from_inputs_with_args() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "codex".to_string();
-        *model.agent_args_input_mut() = "/review --verbose".to_string();
+        model.agent_name_input = "test-agent".to_string();
+        model.agent_command_input = "codex".to_string();
+        model.agent_args_input = "/review --verbose".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_ok());
@@ -339,9 +335,9 @@ mod tests {
     #[test]
     fn test_build_agent_from_inputs_empty_args() {
         let mut model = create_test_model();
-        *model.agent_name_input_mut() = "test-agent".to_string();
-        *model.agent_command_input_mut() = "echo".to_string();
-        *model.agent_args_input_mut() = "   ".to_string();
+        model.agent_name_input = "test-agent".to_string();
+        model.agent_command_input = "echo".to_string();
+        model.agent_args_input = "   ".to_string();
 
         let result = build_agent_from_inputs(&model);
         assert!(result.is_ok());
@@ -353,7 +349,7 @@ mod tests {
     #[test]
     fn test_apply_agent_create_duplicate() {
         let mut model = create_test_model();
-        model.agents_mut().push(create_test_agent("existing"));
+        model.agents.push(create_test_agent("existing"));
         let agent = create_test_agent("existing");
 
         let result = apply_agent_create(&mut model, agent);
@@ -377,9 +373,9 @@ mod tests {
     #[test]
     fn test_apply_agent_edit_duplicate() {
         let mut model = create_test_model();
-        model.agents_mut().push(create_test_agent("agent1"));
-        model.agents_mut().push(create_test_agent("agent2"));
-        *model.form_target_agent_mut() = Some(0);
+        model.agents.push(create_test_agent("agent1"));
+        model.agents.push(create_test_agent("agent2"));
+        model.form_target_agent = Some(0);
         let agent = create_test_agent("agent2");
 
         let result = apply_agent_edit(&mut model, agent);
