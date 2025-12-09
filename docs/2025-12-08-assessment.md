@@ -141,23 +141,20 @@ The `custom_tab_name` field exists in `Model` but isn't exposed in the wizard fl
 
 ## 4. Code Organization
 
-### 4.1 Handler Bloat
+### 4.1 ~~Handler Bloat~~ ✅ RESOLVED
 
-`handlers.rs` is 1,162 lines with too many responsibilities:
+*Split `handlers.rs` (1,162 lines) into directory module structure on 2025-12-08:*
 
-- Key event routing
-- Mode-specific handlers (7 modes)
-- Pane lifecycle management
-- Session/tab state synchronization
-- Agent CRUD operations
-- Form state management
-- Selection movement
-- Validation logic
+```
+src/handlers/
+├── mod.rs       (~10 lines)  - Public API re-exports
+├── keys.rs      (~235 lines) - Key event dispatcher + mode handlers
+├── session.rs   (~280 lines) - Zellij session/pane state sync
+├── panes.rs     (~145 lines) - Pane spawn/focus/kill operations
+└── forms.rs     (~170 lines) - Agent form CRUD + text editing
+```
 
-**Recommendation**: Split into focused modules:
-- `events.rs` - Event routing and pane lifecycle
-- `forms.rs` - Form handling and validation
-- `navigation.rs` - Selection and mode transitions
+*Uses `pub(super)` for internal cross-module functions, re-exports maintain unchanged public API.*
 
 ### 4.2 Public API Surface
 
@@ -200,23 +197,15 @@ For a WASM plugin with a single entry point (`main.rs`), none of these need to b
 ### 5.4 Unused Variable
 
 ```rust
-// handlers.rs:395
+// handlers/panes.rs:69
 let (tab_target, _is_new_tab) = match tab_choice {
 ```
 
 The `_is_new_tab` is computed but never used.
 
-### 5.5 Redundant Import
+### 5.5 ~~Redundant Import~~ ✅ RESOLVED
 
-```rust
-// handlers.rs:7-8
-use zellij_tile::prelude::*;
-use zellij_tile::prelude::{
-    BareKey, KeyModifier, KeyWithModifier, PaneId, PaneManifest, PermissionStatus, TabInfo,
-};
-```
-
-The glob import already includes these items.
+*Fixed during handler split on 2025-12-08. Each submodule now imports only what it needs.*
 
 ---
 
@@ -242,9 +231,9 @@ All tests are unit tests. Missing coverage for:
 | Function | Location | Risk |
 |----------|----------|------|
 | `render_ui()` | `ui.rs:59` | No tests for any rendering |
-| `handle_session_update()` | `handlers.rs:334` | Complex state management |
-| `rebuild_from_session_infos()` | `handlers.rs:210` | 85 lines of complex logic |
-| `handle_key_event_delete_confirm()` | `handlers.rs:775` | Destructive operation |
+| `handle_session_update()` | `handlers/session.rs:277` | Complex state management |
+| `rebuild_from_session_infos()` | `handlers/session.rs:153` | 85 lines of complex logic |
+| `handle_key_event_delete_confirm()` | `handlers/keys.rs:227` | Destructive operation |
 | `get_path_suggestions()` | `utils.rs:41` | Edge cases untested |
 
 ---
@@ -265,7 +254,7 @@ All tests are unit tests. Missing coverage for:
 |-------|--------|--------|--------|
 | ~~Inconsistent key bindings~~ | ~~Standardize on arrows, add fzf filter~~ | ~~UX consistency~~ | ✅ Done |
 | ~~Mixed error handling~~ | ~~Standardize on `MaestroError`~~ | ~~Maintainability~~ | ✅ Done |
-| Handler bloat | Split `handlers.rs` into modules | Code organization | |
+| ~~Handler bloat~~ | ~~Split `handlers.rs` into modules~~ | ~~Code organization~~ | ✅ Done |
 | ~~Dead code~~ | ~~Remove unused items~~ | ~~Clarity~~ | ✅ Done |
 
 ### Medium Priority
@@ -291,7 +280,11 @@ All tests are unit tests. Missing coverage for:
 
 | File | Lines | Responsibility |
 |------|-------|----------------|
-| `handlers.rs` | 1,162 | Event handling, business logic |
+| `handlers/session.rs` | ~280 | Zellij session/pane state sync |
+| `handlers/keys.rs` | ~235 | Key event dispatcher + mode handlers |
+| `handlers/forms.rs` | ~170 | Agent form CRUD + text editing |
+| `handlers/panes.rs` | ~145 | Pane spawn/focus/kill operations |
+| `handlers/mod.rs` | ~10 | Public API re-exports |
 | `agent.rs` | 545 | Agent config, KDL I/O |
 | `utils.rs` | 409 | Path utilities, helpers |
 | `ui.rs` | 333 | Rendering, mode definitions |
@@ -300,4 +293,4 @@ All tests are unit tests. Missing coverage for:
 | `error.rs` | 58 | Error types |
 | `lib.rs` | 11 | Module exports |
 
-**Total**: ~2,933 lines
+**Total**: ~2,611 lines (handlers/ split reduced duplication)
