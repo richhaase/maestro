@@ -63,6 +63,11 @@ pub struct Model {
 }
 
 impl Model {
+    /// Clear any error message.
+    pub fn clear_error(&mut self) {
+        self.error_message.clear();
+    }
+
     /// Ensure selection indices stay within valid bounds after list changes.
     pub fn clamp_selections(&mut self) {
         let pane_len = self.agent_panes.len();

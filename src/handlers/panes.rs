@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
 
+use crate::agent::names_match;
 use crate::error::MaestroError;
 use crate::model::Model;
 use crate::utils::{build_command, workspace_basename};
@@ -19,14 +20,9 @@ pub(super) fn derive_tab_name_from_workspace(input: &str) -> Option<String> {
         return None;
     }
 
-    if let Some(resolved) = crate::utils::resolve_workspace_path(trimmed) {
-        let normalized = resolved.to_string_lossy().to_string();
-        if !normalized.is_empty() {
-            return Some(normalized);
-        }
-    }
-
-    Some(trimmed.to_string())
+    crate::utils::resolve_workspace_path(trimmed)
+        .map(|p| p.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
 }
 
 pub fn spawn_agent_pane(
@@ -40,7 +36,7 @@ pub fn spawn_agent_pane(
         return;
     }
 
-    let cmd = match model.agents.iter().find(|a| a.name == agent_name) {
+    let cmd = match model.agents.iter().find(|a| names_match(&a.name, &agent_name)) {
         Some(a) => build_command(a),
         None => {
             model.error_message = MaestroError::AgentNotFound(agent_name).to_string();
@@ -99,7 +95,7 @@ pub fn spawn_agent_pane(
     }
     open_command_pane(command_to_run, ctx);
 
-    model.error_message.clear();
+    model.clear_error();
     model.pane_wizard.clear();
 }
 
@@ -117,7 +113,7 @@ pub fn focus_selected(model: &mut Model, selected_idx: usize) {
     go_to_tab_name(&pane.tab_name);
     if let Some(pid) = pane.pane_id {
         focus_terminal_pane(pid, false);
-        model.error_message.clear();
+        model.clear_error();
     } else {
         model.error_message = MaestroError::PaneIdUnavailable.to_string();
     }
@@ -137,7 +133,7 @@ pub fn kill_selected(model: &mut Model, selected_idx: usize) {
     if let Some(pid) = pane.pane_id {
         close_terminal_pane(pid);
         model.agent_panes.retain(|p| p.pane_id != Some(pid));
-        model.error_message.clear();
+        model.clear_error();
         model.clamp_selections();
     } else {
         model.error_message = MaestroError::PaneIdUnavailable.to_string();
@@ -159,5 +155,12 @@ mod tests {
     fn test_derive_tab_name_from_workspace_host_prefix() {
         let derived = derive_tab_name_from_workspace(&format!("{}/src/maestro", WASI_HOST_MOUNT));
         assert_eq!(derived, Some("src/maestro".to_string()));
+    }
+
+    #[test]
+    fn test_derive_tab_name_from_workspace_host_only() {
+        assert_eq!(derive_tab_name_from_workspace(WASI_HOST_MOUNT), None);
+        assert_eq!(derive_tab_name_from_workspace(&format!("{}/", WASI_HOST_MOUNT)), None);
+        assert_eq!(derive_tab_name_from_workspace(""), None);
     }
 }

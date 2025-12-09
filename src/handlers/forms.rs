@@ -26,13 +26,13 @@ pub(super) fn handle_form_text(model: &mut Model, key: &KeyWithModifier) -> bool
 pub(super) fn start_new_pane_workspace(model: &mut Model) {
     model.pane_wizard.clear();
     model.mode = Mode::NewPaneWorkspace;
-    model.error_message.clear();
+    model.clear_error();
 }
 
 pub(super) fn start_agent_create(model: &mut Model) {
     model.agent_form.clear();
     model.mode = Mode::AgentFormCreate;
-    model.error_message.clear();
+    model.clear_error();
 }
 
 pub(super) fn start_agent_edit(model: &mut Model) {
@@ -51,7 +51,7 @@ pub(super) fn start_agent_edit(model: &mut Model) {
         model.agent_form.field = AgentFormField::Name;
         model.agent_form.target = Some(idx);
         model.mode = Mode::AgentFormEdit;
-        model.error_message.clear();
+        model.clear_error();
     }
 }
 
@@ -65,7 +65,7 @@ pub(super) fn start_agent_delete_confirm(model: &mut Model) {
         .min(model.agents.len().saturating_sub(1));
     model.agent_form.target = Some(idx);
     model.mode = Mode::DeleteConfirm;
-    model.error_message.clear();
+    model.clear_error();
 }
 
 pub(super) fn build_agent_from_inputs(model: &Model) -> MaestroResult<Agent> {
@@ -108,8 +108,9 @@ pub(super) fn apply_agent_create(model: &mut Model, agent: Agent) -> MaestroResu
     {
         return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
     }
-    model.agents.push(agent.clone());
-    persist_agents(model, Some(&agent.name))
+    let name = agent.name.clone();
+    model.agents.push(agent);
+    persist_agents(model, Some(&name))
 }
 
 pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult<()> {
@@ -123,8 +124,9 @@ pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult
             {
                 return Err(MaestroError::DuplicateAgentName(agent.name.clone()));
             }
-            model.agents[idx] = agent.clone();
-            return persist_agents(model, Some(&agent.name));
+            let name = agent.name.clone();
+            model.agents[idx] = agent;
+            return persist_agents(model, Some(&name));
         }
     }
     Err(MaestroError::NoAgentSelected)
@@ -146,7 +148,7 @@ pub(super) fn persist_agents(model: &mut Model, focus_name: Option<&str>) -> Mae
     } else {
         model.clamp_selections();
     }
-    model.error_message.clear();
+    model.clear_error();
     Ok(())
 }
 

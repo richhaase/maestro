@@ -52,7 +52,7 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
         }
         BareKey::Char('c') => {
             model.mode = Mode::AgentConfig;
-            reset_status(model);
+            model.clear_error();
         }
         _ => {}
     }
@@ -81,7 +81,7 @@ fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
         }
         BareKey::Esc => {
             model.mode = Mode::View;
-            reset_status(model);
+            model.clear_error();
         }
         _ => {}
     }
@@ -125,7 +125,7 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
             model.mode = Mode::NewPaneAgentSelect;
             model.pane_wizard.agent_filter = String::new();
             model.pane_wizard.agent_idx = 0;
-            reset_status(model);
+            model.clear_error();
         }
         BareKey::Esc => cancel_to_view(model),
         _ => {}
@@ -216,7 +216,7 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
         BareKey::Esc => {
             model.agent_form.clear();
             model.mode = Mode::AgentConfig;
-            model.error_message.clear();
+            model.clear_error();
         }
         _ => {}
     }
@@ -240,7 +240,7 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
                         .min(model.agents.len().saturating_sub(1));
                     match persist_agents(model, None) {
                         Ok(_) => {
-                            model.error_message.clear();
+                            model.clear_error();
                         }
                         Err(err) => {
                             model.error_message = err.to_string();
@@ -258,14 +258,10 @@ fn handle_key_event_delete_confirm(model: &mut Model, key: KeyWithModifier) {
     }
 }
 
-fn reset_status(model: &mut Model) {
-    model.error_message.clear();
-}
-
 fn cancel_to_view(model: &mut Model) {
     model.mode = Mode::View;
     model.pane_wizard.clear();
-    reset_status(model);
+    model.clear_error();
 }
 
 fn view_preserve_messages(model: &mut Model) {
@@ -280,7 +276,7 @@ fn move_pane_selection(model: &mut Model, delta: isize) {
     let current = model.selected_pane as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     model.selected_pane = next;
-    model.error_message.clear();
+    model.clear_error();
 }
 
 fn move_agent_selection(model: &mut Model, delta: isize) {
@@ -291,5 +287,5 @@ fn move_agent_selection(model: &mut Model, delta: isize) {
     let current = model.selected_agent as isize;
     let next = (current + delta).clamp(0, len as isize - 1) as usize;
     model.selected_agent = next;
-    model.error_message.clear();
+    model.clear_error();
 }

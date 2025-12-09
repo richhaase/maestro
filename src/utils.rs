@@ -119,18 +119,21 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
 }
 
 /// Truncate a string to a maximum length, adding ellipsis if needed.
+/// The returned string will be at most `max` characters (including ellipsis).
 pub fn truncate(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();
     }
+    let char_count = s.chars().count();
+    if char_count <= max {
+        return s.to_string();
+    }
+    // Reserve one slot for the ellipsis
     let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= max {
-            out.push('…');
-            break;
-        }
+    for ch in s.chars().take(max.saturating_sub(1)) {
         out.push(ch);
     }
+    out.push('…');
     out
 }
 
@@ -233,7 +236,10 @@ mod tests {
     #[test]
     fn test_truncate() {
         assert_eq!(truncate("hello", 5), "hello");
-        assert_eq!(truncate("hello", 3), "hel…");
+        assert_eq!(truncate("hello", 6), "hello");
+        assert_eq!(truncate("hello", 4), "hel…");
+        assert_eq!(truncate("hello", 3), "he…");
+        assert_eq!(truncate("hello", 1), "…");
         assert_eq!(truncate("hello", 0), "");
         assert_eq!(truncate("", 5), "");
     }
