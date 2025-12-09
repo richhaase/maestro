@@ -152,10 +152,12 @@ pub(super) fn apply_agent_edit(model: &mut Model, agent: Agent) -> MaestroResult
 }
 
 pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
-    let path = default_config_path()?;
+    let path = default_config_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| MaestroError::Config(anyhow::anyhow!("create config directory: {e}")))?;
+        std::fs::create_dir_all(parent).map_err(|e| MaestroError::DirectoryCreate {
+            path: parent.to_path_buf(),
+            message: e.to_string(),
+        })?;
     }
     let user_agents: Vec<_> = model
         .agents
@@ -164,15 +166,10 @@ pub(super) fn persist_agents(model: &mut Model) -> MaestroResult<PathBuf> {
         .cloned()
         .collect();
     save_agents(&path, &user_agents)?;
-    match crate::agent::load_agents_default() {
-        Ok(list) => {
-            model.agents = list;
-            model.clamp_selections();
-            model.error_message.clear();
-            Ok(path)
-        }
-        Err(err) => Err(MaestroError::Config(err)),
-    }
+    model.agents = crate::agent::load_agents_default()?;
+    model.clamp_selections();
+    model.error_message.clear();
+    Ok(path)
 }
 
 #[cfg(test)]

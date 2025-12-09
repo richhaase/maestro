@@ -4,9 +4,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context, Result};
 use kdl::{KdlDocument, KdlNode};
 use serde::{Deserialize, Serialize};
+
+use crate::error::{MaestroError, MaestroResult};
 
 /// An AI coding agent configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,18 +53,25 @@ pub struct AgentPane {
 }
 
 /// Load agents from a KDL configuration file.
-pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
+pub fn load_agents(path: &Path) -> MaestroResult<Vec<Agent>> {
     let data = match fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e).context("read agents file"),
+        Err(e) => {
+            return Err(MaestroError::FileRead {
+                path: path.to_path_buf(),
+                message: e.to_string(),
+            })
+        }
     };
 
     if data.trim().is_empty() {
         return Ok(Vec::new());
     }
 
-    let doc: KdlDocument = data.parse().context("parse agents kdl")?;
+    let doc: KdlDocument = data
+        .parse()
+        .map_err(|e: kdl::KdlError| MaestroError::ConfigParse(e.to_string()))?;
     let mut agents = Vec::new();
     for node in doc.nodes() {
         if node.name().value() != "agent" {
@@ -76,17 +84,19 @@ pub fn load_agents(path: &Path) -> Result<Vec<Agent>> {
 }
 
 /// Save agents to a KDL configuration file.
-pub fn save_agents(path: &Path, agents: &[Agent]) -> Result<()> {
+pub fn save_agents(path: &Path, agents: &[Agent]) -> MaestroResult<()> {
     validate_agents(agents)?;
-    let payload = agents_to_kdl(agents).context("serialize agents")?;
-    fs::write(path, payload.as_bytes()).context("write agents file")?;
+    let payload = agents_to_kdl(agents);
+    fs::write(path, payload.as_bytes()).map_err(|e| MaestroError::FileWrite {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    })?;
     Ok(())
 }
 
 /// Get the default configuration file path (`~/.config/maestro/agents.kdl`).
-pub fn default_config_path() -> Result<PathBuf> {
-    let base = config_base_dir()?;
-    Ok(base.join("agents.kdl"))
+pub fn default_config_path() -> PathBuf {
+    config_base_dir().join("agents.kdl")
 }
 
 /// Get the built-in default agents.
@@ -125,8 +135,8 @@ pub fn is_default_agent(name: &str) -> bool {
 }
 
 /// Load agents, merging user config with built-in defaults.
-pub fn load_agents_default() -> Result<Vec<Agent>> {
-    let path = default_config_path()?;
+pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
+    let path = default_config_path();
     let user_agents = load_agents(&path)?;
 
     let mut merged = default_agents();
@@ -147,28 +157,28 @@ pub fn load_agents_default() -> Result<Vec<Agent>> {
     Ok(merged)
 }
 
-fn validate_agents(agents: &[Agent]) -> Result<()> {
+fn validate_agents(agents: &[Agent]) -> MaestroResult<()> {
     let mut seen = BTreeSet::new();
-    for (idx, agent) in agents.iter().enumerate() {
+    for agent in agents {
         let name = agent.name.trim();
         if name.is_empty() {
-            bail!("agent {idx}: name is required");
+            return Err(MaestroError::AgentNameRequired);
         }
         if agent.command.trim().is_empty() {
-            bail!("agent {idx} ({name}): command is required");
+            return Err(MaestroError::CommandRequired);
         }
         if !seen.insert(name.to_string()) {
-            bail!("duplicate agent name: {name}");
+            return Err(MaestroError::DuplicateAgentName(name.to_string()));
         }
     }
     Ok(())
 }
 
-fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
+fn agent_from_kdl(node: &KdlNode) -> MaestroResult<Agent> {
     let name_val = node
         .get("name")
         .and_then(|e| e.value().as_string())
-        .ok_or_else(|| anyhow!("agent: missing name"))?;
+        .ok_or_else(|| MaestroError::InvalidAgentConfig("missing name".to_string()))?;
     let note = node
         .get("note")
         .and_then(|e| e.value().as_string())
@@ -217,7 +227,7 @@ fn agent_from_kdl(node: &KdlNode) -> Result<Agent> {
     })
 }
 
-fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
+fn agents_to_kdl(agents: &[Agent]) -> String {
     let mut doc = KdlDocument::new();
     for agent in agents {
         let mut node = KdlNode::new("agent");
@@ -243,14 +253,11 @@ fn agents_to_kdl(agents: &[Agent]) -> Result<String> {
         node.set_children(children);
         doc.nodes_mut().push(node);
     }
-    Ok(doc.to_string())
+    doc.to_string()
 }
 
-fn config_base_dir() -> Result<PathBuf> {
-    Ok(PathBuf::from(format!(
-        "{}/.config/maestro",
-        crate::WASI_HOST_MOUNT
-    )))
+fn config_base_dir() -> PathBuf {
+    PathBuf::from(format!("{}/.config/maestro", crate::WASI_HOST_MOUNT))
 }
 
 #[cfg(test)]
@@ -405,7 +412,7 @@ agent name="duplicate" {
 
     #[test]
     fn test_default_config_path() {
-        let path = default_config_path().unwrap();
+        let path = default_config_path();
         assert!(path.to_string_lossy().ends_with("agents.kdl"));
         assert!(path
             .to_string_lossy()

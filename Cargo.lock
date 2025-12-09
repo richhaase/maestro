@@ -1456,7 +1456,6 @@ dependencies = [
 name = "maestro"
 version = "0.1.4"
 dependencies = [
- "anyhow",
  "fuzzy-matcher",
  "kdl",
  "serde",

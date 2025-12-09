@@ -1,10 +1,10 @@
 //! Utility functions for path handling and string manipulation.
 
-use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::agent::Agent;
+use crate::error::{MaestroError, MaestroResult};
 use crate::WASI_HOST_MOUNT;
 
 /// A directory entry from filesystem enumeration.
@@ -12,27 +12,23 @@ use crate::WASI_HOST_MOUNT;
 pub struct DirEntry {
     pub name: String,
     pub path: PathBuf,
-    pub is_directory: bool,
 }
 
 /// Read directory entries, filtering to directories only.
-pub fn read_directory(path: &Path) -> Result<Vec<DirEntry>> {
-    let entries =
-        fs::read_dir(path).with_context(|| format!("read directory: {}", path.display()))?;
+pub fn read_directory(path: &Path) -> MaestroResult<Vec<DirEntry>> {
+    let entries = fs::read_dir(path).map_err(|e| MaestroError::FileRead {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    })?;
     let mut dirs = Vec::new();
 
-    for entry in entries {
-        let entry = entry.context("read entry")?;
-        let metadata = entry.metadata().context("read metadata")?;
-
-        if metadata.is_dir() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            let path = entry.path();
-            dirs.push(DirEntry {
-                name,
-                path,
-                is_directory: true,
-            });
+    for entry in entries.flatten() {
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let path = entry.path();
+                dirs.push(DirEntry { name, path });
+            }
         }
     }
 
