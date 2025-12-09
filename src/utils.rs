@@ -230,9 +230,9 @@ pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::Agent;
     use std::fs;
     use tempfile::tempdir;
-    use crate::agent::Agent;
 
     #[test]
     fn test_truncate() {

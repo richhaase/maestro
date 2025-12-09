@@ -143,10 +143,8 @@ pub fn load_agents_default() -> MaestroResult<Vec<Agent>> {
     let user_agents = load_agents(&path)?;
 
     let mut merged = default_agents();
-    let default_names: std::collections::BTreeSet<String> = merged
-        .iter()
-        .map(|a| a.name.to_lowercase())
-        .collect();
+    let default_names: std::collections::BTreeSet<String> =
+        merged.iter().map(|a| a.name.to_lowercase()).collect();
 
     for user_agent in user_agents {
         let user_name_normalized = user_agent.name.to_lowercase();
@@ -560,10 +558,8 @@ agent name="duplicate" {
 
         let defaults = default_agents();
         let mut merged = defaults.clone();
-        let default_names: std::collections::BTreeSet<String> = merged
-            .iter()
-            .map(|a| a.name.to_lowercase())
-            .collect();
+        let default_names: std::collections::BTreeSet<String> =
+            merged.iter().map(|a| a.name.to_lowercase()).collect();
 
         for user_agent in loaded {
             let normalized = user_agent.name.to_lowercase();

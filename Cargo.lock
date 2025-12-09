@@ -1459,7 +1459,6 @@ dependencies = [
  "fuzzy-matcher",
  "kdl",
  "serde",
- "serde_json",
  "shell-words",
  "tempfile",
  "thiserror 1.0.69",

@@ -12,7 +12,6 @@ pub struct AgentForm {
     pub note: String,
     pub field: AgentFormField,
     pub target: Option<usize>,
-    pub source: Option<Mode>,
 }
 
 impl AgentForm {
@@ -38,7 +37,6 @@ pub struct PaneWizard {
     pub agent_filter: String,
     pub agent_idx: usize,
     pub tab_name: Option<String>,
-    pub quick_launch_agent: Option<String>,
 }
 
 impl PaneWizard {

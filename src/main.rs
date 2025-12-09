@@ -104,7 +104,7 @@ impl ZellijPlugin for Maestro {
             return;
         }
 
-        print!("{}", render_ui(&self.model, rows, cols));
+        print!("{}", render_ui(&self.model, cols));
     }
 }
 

@@ -214,7 +214,6 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
             }
         },
         BareKey::Esc => {
-            model.agent_form.source = None;
             cancel_to_view(model);
         }
         _ => {}

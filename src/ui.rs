@@ -74,7 +74,7 @@ pub fn render_permissions_requesting(rows: usize, cols: usize) -> String {
 }
 
 /// Render the complete UI based on current model state.
-pub fn render_ui(model: &Model, _rows: usize, cols: usize) -> String {
+pub fn render_ui(model: &Model, cols: usize) -> String {
     let mut out = String::new();
 
     out.push_str(&render_agent_panes(model, cols));

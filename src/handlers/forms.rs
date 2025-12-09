@@ -35,7 +35,6 @@ pub(super) fn start_new_pane_workspace(model: &mut Model) {
 
 pub(super) fn start_agent_create(model: &mut Model) {
     model.agent_form.clear();
-    model.agent_form.source = Some(Mode::View);
     model.mode = Mode::AgentFormCreate;
     model.error_message.clear();
 }
@@ -55,7 +54,6 @@ pub(super) fn start_agent_edit(model: &mut Model) {
         model.agent_form.note = agent.note.clone().unwrap_or_default();
         model.agent_form.field = AgentFormField::Name;
         model.agent_form.target = Some(idx);
-        model.agent_form.source = Some(Mode::View);
         model.mode = Mode::AgentFormEdit;
         model.error_message.clear();
     }
