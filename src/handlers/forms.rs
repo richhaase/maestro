@@ -51,7 +51,7 @@ pub(super) fn start_agent_edit(model: &mut Model) {
     if let Some(agent) = model.agents.get(idx) {
         model.agent_form.name = agent.name.clone();
         model.agent_form.command = agent.command.clone();
-        model.agent_form.args = agent.args.join(" ");
+        model.agent_form.args = shell_words::join(&agent.args);
         model.agent_form.note = agent.note.clone().unwrap_or_default();
         model.agent_form.field = AgentFormField::Name;
         model.agent_form.target = Some(idx);
@@ -315,6 +315,22 @@ mod tests {
             agent.args,
             vec!["/review".to_string(), "--verbose".to_string()]
         );
+    }
+
+    #[test]
+    fn test_start_agent_edit_preserves_args_with_spaces() {
+        let mut model = create_test_model();
+        model.agents.push(Agent {
+            name: "test-agent".to_string(),
+            command: "codex".to_string(),
+            args: vec!["/review".to_string(), "hello world".to_string()],
+            note: None,
+        });
+        model.selected_agent = 0;
+
+        start_agent_edit(&mut model);
+
+        assert_eq!(model.agent_form.args, "/review 'hello world'");
     }
 
     #[test]

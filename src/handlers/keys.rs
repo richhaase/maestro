@@ -36,7 +36,9 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
         BareKey::Enter => {
             let idx = model.selected_pane;
             focus_selected(model, idx);
-            close_self();
+            if model.error_message.is_empty() {
+                close_self();
+            }
         }
         BareKey::Esc => {
             close_self();
