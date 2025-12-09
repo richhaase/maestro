@@ -87,35 +87,35 @@ pub fn get_path_suggestions(partial_path: &str) -> Vec<String> {
 
     let matcher = SkimMatcherV2::default();
 
-    let mut suggestions: Vec<String> = entries
+    let mut scored: Vec<(i64, String)> = entries
         .iter()
-        .filter(|entry| {
-            if filter_segment.is_empty() {
-                true
+        .filter_map(|entry| {
+            let name = &entry.name;
+            // Neutral score when no filter is provided so we still surface all entries.
+            let score = if filter_segment.is_empty() {
+                0
             } else {
-                matcher.fuzzy_match(&entry.name, &filter_segment).is_some()
-                    || entry
-                        .name
-                        .to_lowercase()
-                        .starts_with(&filter_segment.to_lowercase())
-            }
-        })
-        .map(|entry| {
+                matcher.fuzzy_match(name, &filter_segment)?
+            };
+
             let relative = if entry.path.starts_with(&home) {
                 entry.path.strip_prefix(&home).unwrap_or(&entry.path)
             } else {
                 &entry.path
             };
-            format!(
+            let display = format!(
                 "{}/{}",
                 WASI_HOST_MOUNT,
                 relative.to_string_lossy().trim_start_matches('/')
-            )
+            );
+            Some((score, display))
         })
         .collect();
 
-    suggestions.sort();
-    suggestions
+    // Sort by best match first, then by path name for stable ordering.
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+    scored.into_iter().map(|(_, path)| path).collect()
 }
 
 /// Truncate a string to a maximum length, adding ellipsis if needed.
@@ -230,6 +230,8 @@ pub fn find_agent_by_command<'a>(agents: &'a [Agent], pane_title: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
     use crate::agent::Agent;
 
     #[test]
@@ -374,6 +376,45 @@ mod tests {
         assert_eq!(
             resolve_workspace_path("Documents"),
             Some(PathBuf::from("Documents"))
+        );
+    }
+
+    #[test]
+    fn test_get_path_suggestions_sorted_by_score() {
+        let temp = tempdir().unwrap();
+        let base = temp.path();
+        // Create directories that share the same prefix to exercise ordering.
+        let entries = ["src", "scripts", "docs"];
+        for entry in &entries {
+            fs::create_dir_all(base.join(entry)).unwrap();
+        }
+
+        // Override HOME so the helper uses our temp dir.
+        std::env::set_var("HOME", base);
+
+        // With filter "sc", "scripts" should rank above "src" when fuzzy matched.
+        let suggestions = get_path_suggestions("sc");
+        let joined = suggestions.join(",");
+        assert!(
+            joined.contains("/src"),
+            "expected src path in suggestions: {joined}"
+        );
+        assert!(
+            joined.contains("/scripts"),
+            "expected scripts path in suggestions: {joined}"
+        );
+
+        let idx_scripts = suggestions
+            .iter()
+            .position(|s| s.ends_with("/scripts"))
+            .unwrap();
+        let idx_src = suggestions
+            .iter()
+            .position(|s| s.ends_with("/src"))
+            .unwrap();
+        assert!(
+            idx_scripts < idx_src,
+            "scripts should come before src when filtering 'sc': {suggestions:?}"
         );
     }
 }
