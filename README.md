@@ -1,26 +1,53 @@
 # Maestro
-Zellij plugin that spawns and manages panes running CLI-based AI coding agents (Claude, Cursor, etc.) entirely from the keyboard.
 
-## Quick Start
-1. **Build the plugin once**
+Keyboard-driven Zellij plugin for spawning and managing CLI-based AI coding agents (Claude, Cursor, etc.)
+
+## Features
+
+- Launch AI agents in dedicated panes from a floating overlay (`Alt+m`)
+- Fuzzy workspace selection with path autocomplete
+- Agent config management (add/edit/delete) persisted to `~/.config/maestro/agents.kdl`
+- Session-aware pane tracking across Zellij reloads
+- Default agents for Claude Code, Cursor, Gemini, and Codex
+
+## Prerequisites
+
+- **Rust** 1.70+ and **Cargo** 1.70+
+- **Zellij** 0.43.1+ (terminal multiplexer)
+- **wasm32-wasip1** target (`rustup target add wasm32-wasip1`)
+- One or more CLI agents installed (e.g., `claude`, `cursor-agent`)
+
+## Installation
+
+1. **Clone and build**
+
    ```sh
    git clone https://github.com/richhaase/maestro.git
    cd maestro
    rustup target add wasm32-wasip1
    cargo build --release --target wasm32-wasip1
+   ```
+
+2. **Install plugin**
+
+   ```sh
    mkdir -p ~/.config/zellij/plugins
    cp target/wasm32-wasip1/release/maestro.wasm ~/.config/zellij/plugins/
    ```
 
-2. **Wire up the hot-key exactly as shown in `~/.config/zellij/config.kdl`**
+3. **Configure Zellij** (`~/.config/zellij/config.kdl`)
 
-   Edit `~/.config/zellij/config.kdl` and ensure the following entries exist (replace `/home/you` with your actual host home directory):
+   Add the keybinding (replace `/home/you` with your actual home directory):
 
    ```kdl
-   keybinds clear-defaults=true {
+   keybinds {
+
      ...
+
      shared_among "normal" "locked" {
+
        ...
+
        bind "Alt m" {
          LaunchOrFocusPlugin "file:~/.config/zellij/plugins/maestro.wasm" {
            floating true
@@ -29,52 +56,100 @@ Zellij plugin that spawns and manages panes running CLI-based AI coding agents (
          }
        }
      }
-     ...
    }
+   ```
 
+   Add the plugin alias:
+
+   ```kdl
    plugins {
+
      ...
+
      maestro location="file:~/.config/zellij/plugins/maestro.wasm" {
        cwd "/home/you"
      }
    }
    ```
 
-   - The `bind "Alt m"` stanza lives in the `shared_among "normal" "locked"` block so the shortcut works from either mode.
-   - The `plugins { maestro ... }` alias preloads Maestro and sets the same host-side `cwd`. This ensures `/host` inside the WASI sandbox maps back to your real home directory where `~/.config/maestro` lives.
+   The `cwd` must point to your host home directory so `/host` inside the WASI sandbox maps to where `~/.config/maestro` lives.
 
-3. **Reload/launch Zellij and press `Alt+m`**
-   - The first invocation prompts for permissions (Read/Change application state, Open terminals/plugins, Run commands, etc.). Accept once.
-   - Subsequent presses of `Alt+m` toggle Maestro as a floating pane focused on the current tab.
+4. **Launch and test**
+   ```sh
+   zellij
+   # Press Alt+m
+   # Accept permissions prompt
+   # Press Alt+m again to toggle Maestro
+   ```
 
 ## Key Commands
-- **Main pane list:** `↑/↓` select panes • `Enter` focus selected pane (Maestro auto-closes) • `d` kill pane • `n` new-pane wizard • `c` agent config • `Esc` close Maestro.
-- **Agent Config overlay:** `↑/↓` move • `a` add • `e` edit • `d` delete (with confirmation) • `Esc` return.
-- **New-pane wizard:**
-  - Workspace step: type path, `Tab` accept suggestion, `↑/↓` move through suggestions, `Enter` confirm, `Esc` cancel.
-  - Agent step: type to fuzzy-filter, `↑/↓` highlight match, `Enter` spawn pane, `Esc` cancel.
-- **Agent form:** `↑/↓` cycle fields (Name → Command → Args → Note) • type to edit • `Enter` save • `Esc` cancel.
-- **Delete confirm:** `Enter`/`y` delete • `Esc`/`n` cancel.
+
+| Context             | Key     | Action                                |
+| ------------------- | ------- | ------------------------------------- |
+| **Main pane list**  | `↑/↓`   | Select panes                          |
+|                     | `Enter` | Focus pane (auto-closes Maestro)      |
+|                     | `d`     | Kill selected pane                    |
+|                     | `n`     | New-pane wizard                       |
+|                     | `c`     | Agent config                          |
+|                     | `Esc`   | Close Maestro                         |
+| **Agent config**    | `↑/↓`   | Navigate agents                       |
+|                     | `a`     | Add agent                             |
+|                     | `e`     | Edit agent                            |
+|                     | `d`     | Delete (with confirmation)            |
+|                     | `Esc`   | Return to main                        |
+| **New-pane wizard** | Type    | Enter/filter workspace path           |
+| (Step 1: Workspace) | `↑/↓`   | Navigate workspace suggestions        |
+|                     | `Tab`   | Accept workspace suggestion           |
+|                     | `Enter` | Confirm workspace                     |
+|                     | `Esc`   | Cancel                                |
+| **New-pane wizard** | Type    | Filter agents                         |
+| (Step 2: Agent)     | `↑/↓`   | Navigate agent matches                |
+|                     | `Enter` | Spawn pane with selected agent        |
+|                     | `Esc`   | Cancel                                |
+| **Agent form**      | `↑/↓`   | Cycle fields (Name/Command/Args/Note) |
+|                     | Type    | Edit field                            |
+|                     | `Enter` | Save                                  |
+|                     | `Esc`   | Cancel                                |
 
 ## Configuration
-- Maestro persists agents to `~/.config/maestro/agents.kdl` on the host (seen as `/host/.config/maestro/agents.kdl` inside the plugin).
-- Default agents (`cursor`, `claude`, `gemini`, `codex`) merge in at startup; only non-default entries are written back.
-- Manage agents via the in-plugin UI to avoid malformed KDL.
 
-Example entry:
+Agents are persisted to `~/.config/maestro/agents.kdl`. Default agents (`cursor`, `claude`, `gemini`, `codex`) are merged at startup. When you create, edit, or delete agents through the UI, the complete list (defaults + custom) is saved to preserve any customizations to built-in agents.
+
+Example agent:
+
 ```kdl
-agent name="codex-review" note="Verbose reviewer" {
+agent name="codex-reviewer" note="Run codex review" {
     cmd "codex"
-    args "/review" "--verbose"
+    args "review" "--base" "main"
 }
 ```
 
+Manage agents via the in-plugin UI to avoid malformed KDL.
+
 ## Development
-- Format, lint, and test before committing:
-  ```sh
-  cargo fmt
-  cargo clippy --all-targets --all-features
-  cargo test
-  ```
-- Release build (needed for Zellij): `cargo build --release --target wasm32-wasip1`
-- Debugging: run `zellij --log-to-file true` and set `RUST_LOG=debug` before launching Maestro to capture plugin logs under `~/.cache/zellij/`.
+
+Run before committing:
+
+```sh
+cargo fmt
+cargo clippy --all-targets --all-features
+cargo test
+```
+
+Build release WASM:
+
+```sh
+cargo build --release --target wasm32-wasip1
+```
+
+Debug logging:
+
+```sh
+zellij --log-to-file true
+# Set RUST_LOG=debug before launching Maestro
+# Logs appear under ~/.cache/zellij/
+```
+
+## License
+
+MIT
