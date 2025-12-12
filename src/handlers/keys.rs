@@ -36,9 +36,6 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
         BareKey::Enter => {
             let idx = model.selected_pane;
             focus_selected(model, idx);
-            if model.error_message.is_empty() {
-                close_self();
-            }
         }
         BareKey::Esc => {
             close_self();
@@ -173,7 +170,6 @@ fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifie
                 spawn_agent_pane(model, workspace, agent, tab_choice);
                 if model.error_message.is_empty() {
                     model.mode = Mode::View;
-                    close_self();
                 }
             }
         }
