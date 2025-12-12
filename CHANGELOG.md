@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-12-12
+
 ### Changed
 
 - Refreshed README with Features section, Prerequisites with versions, Installation steps reorganization, and key commands table. ([8c8daf9](https://github.com/richhaase/maestro/commit/8c8daf9))
