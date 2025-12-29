@@ -120,24 +120,16 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
 }
 
 fn handle_key_event_new_pane_agent_select(model: &mut Model, key: KeyWithModifier) {
-    // Handle text input for filtering
-    if handle_text_edit(&mut model.pane_wizard.agent_filter, &key) {
-        // Reset selection when filter changes
-        model.pane_wizard.agent_idx = 0;
-        return;
-    }
-
-    let filtered_indices =
-        crate::utils::filter_agents_fuzzy(&model.agents, &model.pane_wizard.agent_filter);
+    let filtered_indices = crate::utils::filter_agents_fuzzy(&model.agents, "");
     let filtered_count = filtered_indices.len();
 
     match key.bare_key {
-        BareKey::Down => {
+        BareKey::Char('j') => {
             if filtered_count > 0 && model.pane_wizard.agent_idx + 1 < filtered_count {
                 model.pane_wizard.agent_idx += 1;
             }
         }
-        BareKey::Up => {
+        BareKey::Char('k') => {
             if model.pane_wizard.agent_idx > 0 {
                 model.pane_wizard.agent_idx -= 1;
             }
@@ -173,11 +165,12 @@ fn handle_key_event_agent_form(model: &mut Model, key: KeyWithModifier) {
         return;
     }
     match key.bare_key {
-        BareKey::Down => {
-            model.agent_form.field = next_field(model.agent_form.field);
-        }
-        BareKey::Up => {
-            model.agent_form.field = prev_field(model.agent_form.field);
+        BareKey::Tab => {
+            if key.key_modifiers.contains(&KeyModifier::Shift) {
+                model.agent_form.field = prev_field(model.agent_form.field);
+            } else {
+                model.agent_form.field = next_field(model.agent_form.field);
+            }
         }
         BareKey::Enter => match build_agent_from_inputs(model) {
             Ok(agent) => {

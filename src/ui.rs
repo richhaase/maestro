@@ -235,17 +235,12 @@ fn render_overlay(model: &Model, cols: usize) -> Option<String> {
         Mode::NewPaneAgentSelect => {
             let mut lines = Vec::new();
 
-            let filter = &model.pane_wizard.agent_filter;
-            if filter.is_empty() {
-                lines.push("Select agent (type to filter):".to_string());
-            } else {
-                lines.push(format!("Filter: {}_", filter));
-            }
+            lines.push("Select agent:".to_string());
 
-            let filtered_indices = crate::utils::filter_agents_fuzzy(&model.agents, filter);
+            let filtered_indices = crate::utils::filter_agents_fuzzy(&model.agents, "");
 
             if filtered_indices.is_empty() {
-                lines.push("  (no matching agents)".to_string());
+                lines.push("  (no agents)".to_string());
             } else {
                 for (display_idx, &agent_idx) in filtered_indices.iter().enumerate() {
                     let prefix = if display_idx == model.pane_wizard.agent_idx {
@@ -330,8 +325,8 @@ fn render_status(model: &Model, cols: usize) -> String {
         Mode::View => "j/k move • Enter focus • d kill • n new • c config • Esc close",
         Mode::AgentConfig => "j/k move • a add • e edit • d delete • Esc back",
         Mode::NewPaneWorkspace => "Tab accept • Enter continue • Esc cancel",
-        Mode::NewPaneAgentSelect => "type to filter • ↑/↓ move • Enter select • Esc cancel",
-        Mode::AgentFormCreate | Mode::AgentFormEdit => "↑/↓ move • Enter save • Esc cancel",
+        Mode::NewPaneAgentSelect => "j/k move • Enter select • Esc cancel",
+        Mode::AgentFormCreate | Mode::AgentFormEdit => "Tab/Shift-Tab move • Enter save • Esc cancel",
         Mode::DeleteConfirm => "Enter/y confirm • Esc/n cancel",
     };
     let msg = if !model.error_message.is_empty() {
