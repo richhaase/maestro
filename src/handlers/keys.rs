@@ -27,10 +27,10 @@ pub fn handle_key_event(model: &mut Model, key: KeyWithModifier) {
 
 fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
     match key.bare_key {
-        BareKey::Down => {
+        BareKey::Char('j') => {
             move_pane_selection(model, 1);
         }
-        BareKey::Up => {
+        BareKey::Char('k') => {
             move_pane_selection(model, -1);
         }
         BareKey::Enter => {
@@ -57,10 +57,10 @@ fn handle_key_event_view(model: &mut Model, key: KeyWithModifier) {
 
 fn handle_key_event_agent_config(model: &mut Model, key: KeyWithModifier) {
     match key.bare_key {
-        BareKey::Down => {
+        BareKey::Char('j') => {
             move_agent_selection(model, 1);
         }
-        BareKey::Up => {
+        BareKey::Char('k') => {
             move_agent_selection(model, -1);
         }
         BareKey::Char('a') => {
@@ -94,17 +94,7 @@ fn handle_key_event_new_pane_workspace(model: &mut Model, key: KeyWithModifier) 
     let suggestions = crate::utils::get_path_suggestions(&input);
 
     match key.bare_key {
-        BareKey::Up => {
-            if model.pane_wizard.browse_idx > 0 {
-                model.pane_wizard.browse_idx -= 1;
-            }
-        }
-        BareKey::Down => {
-            let max_idx = suggestions.len().saturating_sub(1);
-            if model.pane_wizard.browse_idx < max_idx {
-                model.pane_wizard.browse_idx += 1;
-            }
-        }
+        // Pure typedown: no Up/Down navigation, first match is always selected
         BareKey::Tab => {
             if let Some(suggestion) = suggestions.get(model.pane_wizard.browse_idx) {
                 model.pane_wizard.workspace = suggestion.clone();
